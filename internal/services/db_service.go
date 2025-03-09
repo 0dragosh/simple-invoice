@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -509,6 +510,17 @@ func (s *DBService) GetBusinesses() ([]models.Business, error) {
 
 // SaveClient saves a client to the database
 func (s *DBService) SaveClient(client *models.Client) error {
+	// Validate VAT ID format if it's a UK VAT ID
+	if strings.HasPrefix(client.VatID, "GB") {
+		// UK VAT ID should be GB followed by 9-12 digits
+		// Standard format is 9 digits, but there are variations
+		// We'll be more permissive to allow various formats
+		ukVatPattern := regexp.MustCompile(`^GB[0-9]{7,12}$`)
+		if !ukVatPattern.MatchString(client.VatID) {
+			return fmt.Errorf("Invalid UK VAT ID format. Expected GB followed by 7-12 digits.")
+		}
+	}
+
 	if client.ID == 0 {
 		// Insert new client
 		result, err := s.db.Exec(`
