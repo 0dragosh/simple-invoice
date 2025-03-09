@@ -24,8 +24,8 @@ FROM alpine:3.21.3
 # Install required dependencies for SQLite
 RUN apk --no-cache add ca-certificates tzdata sqlite
 
-# Create a non-root user and group
-RUN addgroup -S invoice && adduser -S invoice -G invoice
+# Create a non-root user and group with ID 2000
+RUN addgroup -g 2000 -S invoice && adduser -u 2000 -S invoice -G invoice
 
 WORKDIR /app
 
