@@ -285,7 +285,8 @@ document.addEventListener('DOMContentLoaded', function() {
             city: document.getElementById('city').value,
             postal_code: document.getElementById('postalCode').value,
             country: document.getElementById('country').value,
-            vat_id: document.getElementById('vatId').value
+            vat_id: document.getElementById('vatId').value,
+            created_date: new Date().toISOString() // Use ISO format for proper time parsing
         };
         
         // Check if it's a UK VAT ID
