@@ -207,6 +207,9 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	pdf.SetX(60)
 	pdf.Cell(0, 10, "#"+invoice.InvoiceNumber)
 
+	// Get currency symbol
+	currencySymbol := FormatCurrencySymbol(invoice.Currency)
+
 	// Add a subtle divider line
 	pdf.SetDrawColor(230, 230, 230)
 	pdf.Line(15, 40, 195, 40)
@@ -326,9 +329,9 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 		pdf.SetX(105)
 		pdf.Cell(30, 8, fmt.Sprintf("%.2f", item.Quantity))
 		pdf.SetX(135)
-		pdf.Cell(30, 8, fmt.Sprintf("%.2f %s", item.UnitPrice, invoice.Currency))
+		pdf.Cell(30, 8, fmt.Sprintf("%.2f %s", item.UnitPrice, currencySymbol))
 		pdf.SetX(165)
-		pdf.Cell(30, 8, fmt.Sprintf("%.2f %s", item.Amount, invoice.Currency))
+		pdf.Cell(30, 8, fmt.Sprintf("%.2f %s", item.Amount, currencySymbol))
 
 		y += 8
 	}
@@ -345,7 +348,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	pdf.SetX(135)
 	pdf.Cell(30, 6, "Subtotal:")
 	pdf.SetX(165)
-	pdf.Cell(30, 6, fmt.Sprintf("%.2f %s", invoice.TotalAmount-invoice.VatAmount, invoice.Currency))
+	pdf.Cell(30, 6, fmt.Sprintf("%.2f %s", invoice.TotalAmount-invoice.VatAmount, currencySymbol))
 
 	y += 6
 	pdf.SetY(y)
@@ -359,7 +362,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	} else {
 		pdf.Cell(30, 6, fmt.Sprintf("VAT (%.1f%%):", invoice.VatRate))
 		pdf.SetX(165)
-		pdf.Cell(30, 6, fmt.Sprintf("%.2f %s", invoice.VatAmount, invoice.Currency))
+		pdf.Cell(30, 6, fmt.Sprintf("%.2f %s", invoice.VatAmount, currencySymbol))
 	}
 
 	// Total with emphasis
@@ -374,7 +377,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	pdf.SetX(135)
 	pdf.Cell(30, 8, "TOTAL:")
 	pdf.SetX(165)
-	pdf.Cell(30, 8, fmt.Sprintf("%.2f %s", invoice.TotalAmount, invoice.Currency))
+	pdf.Cell(30, 8, fmt.Sprintf("%.2f %s", invoice.TotalAmount, currencySymbol))
 
 	// Add notes section with subtle styling
 	if invoice.Notes != "" {

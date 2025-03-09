@@ -65,25 +65,26 @@
                     <tr>
                         <th>Description</th>
                         <th class="text-end">Quantity</th>
-                        <th class="text-end">Unit Price ({{.Invoice.Currency}})</th>
-                        <th class="text-end">Amount ({{.Invoice.Currency}})</th>
+                        <th class="text-end">Unit Price ({{currencySymbol .Invoice.Currency}})</th>
+                        <th class="text-end">Amount ({{currencySymbol .Invoice.Currency}})</th>
                     </tr>
                 </thead>
                 <tbody>
                     {{$currency := .Invoice.Currency}}
+                    {{$currencySymbol := currencySymbol .Invoice.Currency}}
                     {{range .Items}}
                     <tr>
                         <td>{{.Description}}</td>
                         <td class="text-end">{{.Quantity}}</td>
-                        <td class="text-end">{{formatCurrency .UnitPrice}} {{$currency}}</td>
-                        <td class="text-end">{{formatCurrency .Amount}} {{$currency}}</td>
+                        <td class="text-end">{{formatCurrency .UnitPrice}} {{$currencySymbol}}</td>
+                        <td class="text-end">{{formatCurrency .Amount}} {{$currencySymbol}}</td>
                     </tr>
                     {{end}}
                 </tbody>
                 <tfoot>
                     <tr>
                         <td colspan="3" class="text-end"><strong>Subtotal:</strong></td>
-                        <td class="text-end">{{formatCurrency .Invoice.TotalAmount}} {{$currency}}</td>
+                        <td class="text-end">{{formatCurrency .Invoice.TotalAmount}} {{$currencySymbol}}</td>
                     </tr>
                     <tr>
                         <td colspan="3" class="text-end">
@@ -97,9 +98,9 @@
                         </td>
                         <td class="text-end">
                             {{if .Invoice.ReverseChargeVat}}
-                            0.00 {{$currency}}
+                            0.00 {{$currencySymbol}}
                             {{else}}
-                            {{formatCurrency .Invoice.VatAmount}} {{$currency}}
+                            {{formatCurrency .Invoice.VatAmount}} {{$currencySymbol}}
                             {{end}}
                         </td>
                     </tr>
@@ -107,9 +108,9 @@
                         <td colspan="3" class="text-end"><strong>Total:</strong></td>
                         <td class="text-end">
                             {{if .Invoice.ReverseChargeVat}}
-                            {{formatCurrency .Invoice.TotalAmount}} {{$currency}}
+                            {{formatCurrency .Invoice.TotalAmount}} {{$currencySymbol}}
                             {{else}}
-                            {{formatCurrency (add .Invoice.TotalAmount .Invoice.VatAmount)}} {{$currency}}
+                            {{formatCurrency (add .Invoice.TotalAmount .Invoice.VatAmount)}} {{$currencySymbol}}
                             {{end}}
                         </td>
                     </tr>

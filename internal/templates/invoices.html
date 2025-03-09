@@ -16,7 +16,7 @@
                         <th>Client</th>
                         <th>Issue Date</th>
                         <th>Due Date</th>
-                        <th>Amount (EUR)</th>
+                        <th>Amount</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -30,9 +30,9 @@
                         <td>{{.DueDate.Format "2006-01-02"}}</td>
                         <td>
                             {{if .ReverseChargeVat}}
-                                {{.TotalAmount}}
+                                {{formatCurrency .TotalAmount}} {{currencySymbol .Currency}}
                             {{else}}
-                                {{add .TotalAmount .VatAmount}}
+                                {{formatCurrency (add .TotalAmount .VatAmount)}} {{currencySymbol .Currency}}
                             {{end}}
                         </td>
                         <td>
