@@ -2,6 +2,8 @@
 
 A simple invoicing application for consultants built with Go. All invoice applications I found were too complex so, naturally, I wrote my own.
 
+![Simple Invoice Screenshot](docs/screenshot.png)
+
 ## Features
 
 - Generate PDF invoices with your logo (optional)
