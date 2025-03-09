@@ -410,48 +410,19 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		h.logger.Info("Received request to create/update client")
 
-		// First, decode the raw JSON to handle date strings manually
-		var rawRequest map[string]json.RawMessage
-		if err := json.NewDecoder(r.Body).Decode(&rawRequest); err != nil {
+		// Decode the client directly
+		var client models.Client
+		if err := json.NewDecoder(r.Body).Decode(&client); err != nil {
 			h.logger.Error("Failed to decode client JSON: %v", err)
 			http.Error(w, fmt.Sprintf("Invalid client data: %v", err), http.StatusBadRequest)
 			return
 		}
 
-		// Extract and parse the client part
-		var rawClient map[string]interface{}
-		if err := json.Unmarshal(rawRequest["client"], &rawClient); err != nil {
-			h.logger.Error("Failed to parse client data: %v", err)
-			http.Error(w, fmt.Sprintf("Invalid client data: %v", err), http.StatusBadRequest)
-			return
+		// If no created date is provided, use current date
+		if client.CreatedDate == nil {
+			now := time.Now()
+			client.CreatedDate = &now
 		}
-
-		// Create the client object
-		client := models.Client{
-			ID:         int(rawClient["id"].(float64)),
-			Name:       rawClient["name"].(string),
-			Address:    rawClient["address"].(string),
-			City:       rawClient["city"].(string),
-			PostalCode: rawClient["postal_code"].(string),
-			Country:    rawClient["country"].(string),
-			VatID:      rawClient["vat_id"].(string),
-		}
-
-		// Parse the date strings
-		createdDateStr, ok := rawClient["created_date"].(string)
-		if !ok {
-			h.logger.Error("Created date is missing or not a string")
-			http.Error(w, "Created date is required and must be a string in YYYY-MM-DD format", http.StatusBadRequest)
-			return
-		}
-
-		createdDate, err := time.Parse("2006-01-02", createdDateStr)
-		if err != nil {
-			h.logger.Error("Failed to parse created date: %v", err)
-			http.Error(w, fmt.Sprintf("Invalid created date format. Expected YYYY-MM-DD, got: %s", createdDateStr), http.StatusBadRequest)
-			return
-		}
-		client.CreatedDate = createdDate
 
 		h.logger.Info("Processing client with ID: %d", client.ID)
 

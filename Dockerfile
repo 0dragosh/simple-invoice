@@ -29,8 +29,8 @@ RUN addgroup -g 2000 -S invoice && adduser -u 2000 -S invoice -G invoice
 
 WORKDIR /app
 
-# Copy the binary from the builder stage
-COPY --from=builder /app/simple-invoice .
+# Copy the binary from the builder stage and rename it to server
+COPY --from=builder /app/simple-invoice ./server
 
 # Copy templates
 COPY --from=builder /app/internal/templates /app/internal/templates
