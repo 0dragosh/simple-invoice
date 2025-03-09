@@ -32,3 +32,78 @@ func CalculateWorkHoursForCurrentMonth() float64 {
 	now := time.Now()
 	return CalculateWorkHoursForMonth(now.Year(), now.Month())
 }
+
+// GetCurrencyForCountry returns the currency code for a given country code
+// For EU countries, it returns the appropriate currency (EUR for Eurozone, or local currency for non-Eurozone)
+func GetCurrencyForCountry(countryCode string) string {
+	// Default currency
+	defaultCurrency := "EUR"
+
+	// Map of EU countries to their currencies
+	euCurrencies := map[string]string{
+		// Eurozone countries (using EUR)
+		"AT": "EUR", // Austria
+		"BE": "EUR", // Belgium
+		"CY": "EUR", // Cyprus
+		"EE": "EUR", // Estonia
+		"FI": "EUR", // Finland
+		"FR": "EUR", // France
+		"DE": "EUR", // Germany
+		"GR": "EUR", // Greece
+		"IE": "EUR", // Ireland
+		"IT": "EUR", // Italy
+		"LV": "EUR", // Latvia
+		"LT": "EUR", // Lithuania
+		"LU": "EUR", // Luxembourg
+		"MT": "EUR", // Malta
+		"NL": "EUR", // Netherlands
+		"PT": "EUR", // Portugal
+		"SK": "EUR", // Slovakia
+		"SI": "EUR", // Slovenia
+		"ES": "EUR", // Spain
+
+		// Non-Eurozone EU countries
+		"BG": "BGN", // Bulgaria - Bulgarian Lev
+		"HR": "HRK", // Croatia - Croatian Kuna (Note: Croatia adopted EUR in 2023, but keeping HRK for backward compatibility)
+		"CZ": "CZK", // Czech Republic - Czech Koruna
+		"DK": "DKK", // Denmark - Danish Krone
+		"HU": "HUF", // Hungary - Hungarian Forint
+		"PL": "PLN", // Poland - Polish Złoty
+		"RO": "RON", // Romania - Romanian Leu
+		"SE": "SEK", // Sweden - Swedish Krona
+
+		// Former EU member
+		"GB": "GBP", // United Kingdom - British Pound
+	}
+
+	// Return the currency for the country code, or the default if not found
+	if currency, exists := euCurrencies[countryCode]; exists {
+		return currency
+	}
+
+	return defaultCurrency
+}
+
+// FormatCurrencySymbol returns the appropriate currency symbol for a given currency code
+func FormatCurrencySymbol(currencyCode string) string {
+	currencySymbols := map[string]string{
+		"EUR": "€",
+		"GBP": "£",
+		"BGN": "лв",
+		"HRK": "kn",
+		"CZK": "Kč",
+		"DKK": "kr",
+		"HUF": "Ft",
+		"PLN": "zł",
+		"RON": "lei",
+		"SEK": "kr",
+		"USD": "$",
+	}
+
+	if symbol, exists := currencySymbols[currencyCode]; exists {
+		return symbol
+	}
+
+	// Return the currency code if no symbol is found
+	return currencyCode
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -608,6 +609,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 		return fmt.Errorf("failed to ensure invoice_items table exists: %w", err)
 	}
 
+	// Start a transaction
 	tx, err := s.db.Begin()
 	if err != nil {
 		s.logger.Error("Failed to begin transaction: %v", err)
@@ -620,9 +622,38 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 		}
 	}()
 
-	// Set default currency if not provided
+	// If no currency is provided, set a default based on the client's country
 	if invoice.Currency == "" {
-		invoice.Currency = "EUR"
+		// Get the client to determine the country
+		client, err := s.GetClient(invoice.ClientID)
+		if err == nil && client != nil {
+			// Set currency based on client's country
+			invoice.Currency = GetCurrencyForCountry(client.Country)
+			s.logger.Info("Set currency to %s based on client's country %s", invoice.Currency, client.Country)
+		} else {
+			// Default to EUR if client can't be found
+			invoice.Currency = "EUR"
+			s.logger.Info("Set default currency to EUR")
+		}
+	}
+
+	// Generate invoice number if not provided
+	if invoice.InvoiceNumber == "" {
+		// Get the current year
+		currentYear := time.Now().Year()
+
+		// Count existing invoices for this year
+		var count int
+		err := s.db.QueryRow("SELECT COUNT(*) FROM invoices WHERE strftime('%Y', issue_date) = ?",
+			strconv.Itoa(currentYear)).Scan(&count)
+		if err != nil {
+			s.logger.Error("Failed to count invoices for year %d: %v", currentYear, err)
+			return fmt.Errorf("failed to count invoices: %w", err)
+		}
+
+		// Generate invoice number in format: INV-YYYY-XXXX
+		invoice.InvoiceNumber = fmt.Sprintf("INV-%d-%04d", currentYear, count+1)
+		s.logger.Info("Generated invoice number: %s", invoice.InvoiceNumber)
 	}
 
 	if invoice.ID == 0 {

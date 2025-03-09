@@ -70,7 +70,10 @@ func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error)
 			return t.Format("2006-01-02")
 		},
 		"formatCurrency": func(amount float64) string {
-			return fmt.Sprintf("%.2f €", amount)
+			return fmt.Sprintf("%.2f", amount)
+		},
+		"currencySymbol": func(currencyCode string) string {
+			return services.FormatCurrencySymbol(currencyCode)
 		},
 		"filepath": filepath.Base,
 	}
@@ -405,91 +408,59 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(clients)
 
 	case http.MethodPost:
-		var client models.Client
-		if err := json.NewDecoder(r.Body).Decode(&client); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Info("Received request to create/update client")
+
+		// First, decode the raw JSON to handle date strings manually
+		var rawRequest map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&rawRequest); err != nil {
+			h.logger.Error("Failed to decode client JSON: %v", err)
+			http.Error(w, fmt.Sprintf("Invalid client data: %v", err), http.StatusBadRequest)
 			return
 		}
 
-		// Check if the request includes a "skip_vat_validation" parameter
-		skipValidation := r.URL.Query().Get("skip_vat_validation") == "true"
-
-		// Validate VAT ID if provided and not skipping validation
-		if client.VatID != "" && !skipValidation {
-			h.logger.Info("Validating VAT ID before saving client: %s", client.VatID)
-
-			// Attempt to validate the VAT ID
-			validatedClient, err := h.vatService.ValidateVatID(client.VatID)
-			if err != nil {
-				// Check if it's a UK VAT ID (which can't be validated automatically)
-				if strings.HasPrefix(err.Error(), "UK_VAT_MANUAL_ENTRY:") {
-					h.logger.Warn("UK VAT ID detected, skipping validation: %s", client.VatID)
-					// Allow saving UK clients without validation
-					// Return a special warning to the client
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					json.NewEncoder(w).Encode(map[string]interface{}{
-						"warning": "UK VAT IDs cannot be automatically validated. The client will be saved with the provided details.",
-						"client":  client,
-					})
-
-					// Save the client
-					if err := h.dbService.SaveClient(&client); err != nil {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-					}
-					return
-				}
-
-				// Check if it's a service unavailability error
-				if strings.Contains(err.Error(), "Service Unavailable") ||
-					strings.Contains(err.Error(), "unavailable") ||
-					strings.Contains(err.Error(), "timeout") ||
-					strings.Contains(err.Error(), "SOAP fault") ||
-					strings.Contains(err.Error(), "VIES API error") {
-					h.logger.Warn("VAT validation service is unavailable: %v", err)
-					// Return a special error code and message for service unavailability
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusServiceUnavailable)
-					json.NewEncoder(w).Encode(map[string]string{
-						"error":   "VAT_SERVICE_UNAVAILABLE",
-						"message": fmt.Sprintf("VAT validation service is currently unavailable: %v. You can choose to save the client without validation.", err),
-					})
-					return
-				}
-
-				// For other validation errors, return a bad request
-				h.logger.Error("VAT ID validation failed: %v", err)
-				http.Error(w, fmt.Sprintf("Invalid VAT ID: %v", err), http.StatusBadRequest)
-				return
-			}
-
-			// If validation succeeded but the VAT ID is not valid, return an error
-			if validatedClient == nil {
-				h.logger.Error("VAT ID is not valid: %s", client.VatID)
-				http.Error(w, "Invalid VAT ID: The provided VAT ID could not be validated", http.StatusBadRequest)
-				return
-			}
-
-			// Update client with validated information
-			client.Name = validatedClient.Name
-			client.Address = validatedClient.Address
-			client.City = validatedClient.City
-			client.PostalCode = validatedClient.PostalCode
-			client.Country = validatedClient.Country
-
-			h.logger.Info("VAT ID validated successfully: %s", client.VatID)
-		} else if client.VatID != "" && skipValidation {
-			h.logger.Warn("Skipping VAT ID validation for client: %s", client.VatID)
+		// Extract and parse the client part
+		var rawClient map[string]interface{}
+		if err := json.Unmarshal(rawRequest["client"], &rawClient); err != nil {
+			h.logger.Error("Failed to parse client data: %v", err)
+			http.Error(w, fmt.Sprintf("Invalid client data: %v", err), http.StatusBadRequest)
+			return
 		}
+
+		// Create the client object
+		client := models.Client{
+			ID:   int(rawClient["id"].(float64)),
+			Name: rawClient["name"].(string),
+		}
+
+		// Parse the date strings
+		createdDateStr, ok := rawClient["created_date"].(string)
+		if !ok {
+			h.logger.Error("Created date is missing or not a string")
+			http.Error(w, "Created date is required and must be a string in YYYY-MM-DD format", http.StatusBadRequest)
+			return
+		}
+
+		createdDate, err := time.Parse("2006-01-02", createdDateStr)
+		if err != nil {
+			h.logger.Error("Failed to parse created date: %v", err)
+			http.Error(w, fmt.Sprintf("Invalid created date format. Expected YYYY-MM-DD, got: %s", createdDateStr), http.StatusBadRequest)
+			return
+		}
+		client.CreatedDate = createdDate
+
+		h.logger.Info("Processing client with ID: %d", client.ID)
 
 		if err := h.dbService.SaveClient(&client); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			h.logger.Error("Failed to save client: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to save client: %v", err), http.StatusInternalServerError)
 			return
 		}
 
+		h.logger.Info("Successfully saved client: %s", client.Name)
 		json.NewEncoder(w).Encode(client)
 
 	default:
+		h.logger.Warn("Method not allowed: %s", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }

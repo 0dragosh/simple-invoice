@@ -52,11 +52,18 @@
                 <div class="col-md-2">
                     <label for="currency" class="form-label">Currency</label>
                     <select class="form-select" id="currency" name="currency">
-                        <option value="EUR" selected>EUR</option>
-                        <option value="USD">USD</option>
-                        <option value="GBP">GBP</option>
-                        <option value="RON">RON</option>
-                        <option value="CHF">CHF</option>
+                        <option value="EUR" selected>EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="BGN">BGN (лв)</option>
+                        <option value="HRK">HRK (kn)</option>
+                        <option value="CZK">CZK (Kč)</option>
+                        <option value="DKK">DKK (kr)</option>
+                        <option value="HUF">HUF (Ft)</option>
+                        <option value="PLN">PLN (zł)</option>
+                        <option value="RON">RON (lei)</option>
+                        <option value="SEK">SEK (kr)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="CHF">CHF (Fr)</option>
                     </select>
                 </div>
             </div>
@@ -164,11 +171,46 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial invoice item - only create one by default
     addInvoiceItem(true); // true means it's the first item
     
-    // Check if reverse charge VAT should be applied on page load
-    // This will be triggered once the client is selected
-    if (clientSelect.value) {
-        checkReverseChargeVat();
-    }
+    // Map of country codes to currencies
+    const countryCurrencyMap = {
+        // Eurozone countries
+        'AT': 'EUR', 'BE': 'EUR', 'CY': 'EUR', 'EE': 'EUR', 'FI': 'EUR',
+        'FR': 'EUR', 'DE': 'EUR', 'GR': 'EUR', 'IE': 'EUR', 'IT': 'EUR',
+        'LV': 'EUR', 'LT': 'EUR', 'LU': 'EUR', 'MT': 'EUR', 'NL': 'EUR',
+        'PT': 'EUR', 'SK': 'EUR', 'SI': 'EUR', 'ES': 'EUR',
+        
+        // Non-Eurozone EU countries
+        'BG': 'BGN', 'HR': 'HRK', 'CZ': 'CZK', 'DK': 'DKK',
+        'HU': 'HUF', 'PL': 'PLN', 'RO': 'RON', 'SE': 'SEK',
+        
+        // Former EU member
+        'GB': 'GBP',
+        
+        // Default to EUR for other countries
+        'default': 'EUR'
+    };
+    
+    // Set currency based on client's country
+    document.getElementById('clientId').addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const clientCountry = selectedOption.getAttribute('data-country');
+        
+        if (clientCountry) {
+            const currency = countryCurrencyMap[clientCountry] || countryCurrencyMap['default'];
+            document.getElementById('currency').value = currency;
+            
+            // Check if the client is from the EU
+            const isEUClient = Object.keys(countryCurrencyMap).includes(clientCountry);
+            
+            // If client is from a different EU country than the business, suggest reverse charge VAT
+            const businessCountry = document.getElementById('businessId').getAttribute('data-country');
+            if (isEUClient && clientCountry !== businessCountry) {
+                document.getElementById('reverseChargeVat').checked = true;
+            } else {
+                document.getElementById('reverseChargeVat').checked = false;
+            }
+        }
+    });
     
     // Update calculations when inputs change
     invoiceForm.addEventListener('input', function(e) {
