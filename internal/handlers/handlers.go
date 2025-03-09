@@ -428,8 +428,13 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Create the client object
 		client := models.Client{
-			ID:   int(rawClient["id"].(float64)),
-			Name: rawClient["name"].(string),
+			ID:         int(rawClient["id"].(float64)),
+			Name:       rawClient["name"].(string),
+			Address:    rawClient["address"].(string),
+			City:       rawClient["city"].(string),
+			PostalCode: rawClient["postal_code"].(string),
+			Country:    rawClient["country"].(string),
+			VatID:      rawClient["vat_id"].(string),
 		}
 
 		// Parse the date strings
