@@ -156,6 +156,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const reverseChargeVatCheckbox = document.getElementById('reverseChargeVat');
     const clientSelect = document.getElementById('clientId');
     
+    // Ensure EUR is selected by default
+    currencySelect.value = 'EUR';
+    
     // Generate invoice number (YYYY-MM-XXXX)
     const today = new Date();
     const year = today.getFullYear();
@@ -275,9 +278,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Form submission
     invoiceForm.addEventListener('submit', function(e) {
         e.preventDefault();
+        console.log('Form submitted');
         
         // Validate form
         if (!validateInvoiceForm()) {
+            console.log('Form validation failed');
             return;
         }
         
@@ -295,13 +300,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const reverseChargeVat = formData.get('reverseChargeVat') === 'on';
         const notes = formData.get('notes');
         
+        console.log('Form data collected:', {
+            clientId, businessId, issueDate, dueDate, invoiceNumber,
+            hourlyRate, hoursWorked, vatRate, currency, reverseChargeVat, notes
+        });
+        
         // Collect invoice items
         const items = [];
-        document.querySelectorAll('.invoice-item').forEach(item => {
+        document.querySelectorAll('.invoice-item').forEach((item, index) => {
             const description = item.querySelector('.item-description').value;
             const quantity = parseFloat(item.querySelector('.item-quantity').value);
             const unitPrice = parseFloat(item.querySelector('.item-price').value);
             const amount = parseFloat(item.querySelector('.item-amount').value);
+            
+            console.log(`Item ${index+1}:`, { description, quantity, unitPrice, amount });
             
             if (description && !isNaN(quantity) && !isNaN(unitPrice) && !isNaN(amount)) {
                 items.push({
@@ -310,8 +322,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     unit_price: unitPrice,
                     amount: amount
                 });
+            } else {
+                console.log(`Item ${index+1} skipped due to invalid data`);
             }
         });
+        
+        console.log('Collected items:', items);
         
         // Calculate totals
         const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
@@ -350,9 +366,11 @@ document.addEventListener('DOMContentLoaded', function() {
             body: JSON.stringify(invoice)
         })
         .then(response => {
+            console.log('Response received:', response.status, response.statusText);
             if (!response.ok) {
                 return response.text().then(text => {
                     console.error(`Server returned status: ${response.status} ${response.statusText}`);
+                    console.error('Response body:', text);
                     throw new Error(`Failed to create invoice (${response.status}): ${text || response.statusText}`);
                 });
             }
