@@ -725,6 +725,47 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		h.logger.Info("Successfully saved invoice #%s with ID: %d", invoice.InvoiceNumber, invoice.ID)
+
+		// Automatically generate PDF for the new invoice
+		go func() {
+			h.logger.Info("Automatically generating PDF for invoice ID: %d", invoice.ID)
+
+			// Get the necessary data for PDF generation
+			savedInvoice, savedItems, err := h.dbService.GetInvoice(invoice.ID)
+			if err != nil {
+				h.logger.Error("Failed to get invoice for automatic PDF generation: %v", err)
+				return
+			}
+
+			business, err := h.dbService.GetBusiness(savedInvoice.BusinessID)
+			if err != nil {
+				h.logger.Error("Failed to get business for automatic PDF generation: %v", err)
+				return
+			}
+
+			client, err := h.dbService.GetClient(savedInvoice.ClientID)
+			if err != nil {
+				h.logger.Error("Failed to get client for automatic PDF generation: %v", err)
+				return
+			}
+
+			// Ensure the pdfs directory exists
+			pdfsDir := filepath.Join(h.dataDir, "pdfs")
+			if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+				h.logger.Error("Failed to create pdfs directory for automatic generation: %v", err)
+				return
+			}
+
+			// Generate the PDF
+			_, err = h.pdfService.GenerateInvoice(savedInvoice, business, client, savedItems)
+			if err != nil {
+				h.logger.Error("Failed to automatically generate PDF: %v", err)
+				return
+			}
+
+			h.logger.Info("Successfully generated PDF for invoice #%s", savedInvoice.InvoiceNumber)
+		}()
+
 		json.NewEncoder(w).Encode(invoice)
 
 	default:
