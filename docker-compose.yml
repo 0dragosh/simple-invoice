@@ -1,0 +1,17 @@
+services:
+  simple-invoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=8080
+      - DATA_DIR=/app/data
+      - COMPANIES_HOUSE_API_KEY=${COMPANIES_HOUSE_API_KEY:-}
+      - VIES_IDENTIFIER=${VIES_IDENTIFIER:-}
+      - VIES_KEY=${VIES_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+    restart: unless-stopped 

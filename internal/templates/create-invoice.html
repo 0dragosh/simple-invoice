@@ -1,0 +1,506 @@
+{{define "content"}}
+<div class="card">
+    <div class="card-body">
+        <h2 class="card-title">Create Invoice</h2>
+        <form id="invoiceForm" class="mt-4">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="invoiceNumber" class="form-label">Invoice Number</label>
+                    <input type="text" class="form-control" id="invoiceNumber" name="invoiceNumber" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="issueDate" class="form-label">Issue Date</label>
+                    <input type="date" class="form-control" id="issueDate" name="issueDate" value="{{.IssueDate}}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="dueDate" class="form-label">Due Date</label>
+                    <input type="date" class="form-control" id="dueDate" name="dueDate" value="{{.DueDate}}" required>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="clientId" class="form-label">Client</label>
+                    <select class="form-select" id="clientId" name="clientId" required>
+                        <option value="">Select Client</option>
+                        {{range .Clients}}
+                        <option value="{{.ID}}" data-country="{{.Country}}">{{.Name}} ({{.VatID}})</option>
+                        {{end}}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="businessId" class="form-label">Business</label>
+                    <select class="form-select" id="businessId" name="businessId" data-country="{{.Business.Country}}" required>
+                        <option value="{{.Business.ID}}" selected>{{.Business.Name}} ({{.Business.VatID}})</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="hourlyRate" class="form-label">Hourly Rate</label>
+                    <input type="number" class="form-control" id="hourlyRate" name="hourlyRate" step="0.01" min="0" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="hoursWorked" class="form-label">Hours Worked</label>
+                    <input type="number" class="form-control" id="hoursWorked" name="hoursWorked" step="0.01" min="0" value="{{.WorkHours}}" required>
+                </div>
+                <div class="col-md-2">
+                    <label for="vatRate" class="form-label">VAT Rate (%)</label>
+                    <input type="number" class="form-control" id="vatRate" name="vatRate" step="0.1" min="0" value="19" required>
+                </div>
+                <div class="col-md-2">
+                    <label for="currency" class="form-label">Currency</label>
+                    <select class="form-select" id="currency" name="currency">
+                        <option value="EUR" selected>EUR</option>
+                        <option value="USD">USD</option>
+                        <option value="GBP">GBP</option>
+                        <option value="RON">RON</option>
+                        <option value="CHF">CHF</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="reverseChargeVat" name="reverseChargeVat">
+                        <label class="form-check-label" for="reverseChargeVat">
+                            Reverse Charge VAT
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <h3 class="mt-4">Invoice Items</h3>
+            <div id="invoiceItems">
+                <div class="invoice-item card mb-3">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Description</label>
+                                <input type="text" class="form-control item-description" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Quantity</label>
+                                <input type="number" class="form-control item-quantity" step="0.01" min="0" value="1" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Unit Price</label>
+                                <input type="number" class="form-control item-price" step="0.01" min="0" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Amount</label>
+                                <input type="number" class="form-control item-amount" step="0.01" min="0" readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <button type="button" class="btn btn-secondary" id="addItemBtn">Add Item</button>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="notes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-6 offset-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="row mb-2">
+                                <div class="col-6">Subtotal:</div>
+                                <div class="col-6 text-end" id="subtotal">0.00</div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-6">VAT:</div>
+                                <div class="col-6 text-end" id="vat">0.00</div>
+                            </div>
+                            <div class="row">
+                                <div class="col-6"><strong>Total:</strong></div>
+                                <div class="col-6 text-end"><strong id="total">0.00</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Create Invoice</button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const invoiceForm = document.getElementById('invoiceForm');
+    const addItemBtn = document.getElementById('addItemBtn');
+    const invoiceItems = document.getElementById('invoiceItems');
+    const hourlyRateInput = document.getElementById('hourlyRate');
+    const hoursWorkedInput = document.getElementById('hoursWorked');
+    const vatRateInput = document.getElementById('vatRate');
+    const currencySelect = document.getElementById('currency');
+    const reverseChargeVatCheckbox = document.getElementById('reverseChargeVat');
+    const clientSelect = document.getElementById('clientId');
+    
+    // Generate invoice number (YYYY-MM-XXXX)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const random = Math.floor(1000 + Math.random() * 9000);
+    document.getElementById('invoiceNumber').value = `${year}-${month}-${random}`;
+    
+    // Add invoice item
+    addItemBtn.addEventListener('click', function() {
+        addInvoiceItem(false); // false means it's not the first item
+    });
+    
+    // Initial invoice item - only create one by default
+    addInvoiceItem(true); // true means it's the first item
+    
+    // Check if reverse charge VAT should be applied on page load
+    // This will be triggered once the client is selected
+    if (clientSelect.value) {
+        checkReverseChargeVat();
+    }
+    
+    // Update calculations when inputs change
+    invoiceForm.addEventListener('input', function(e) {
+        if (e.target.classList.contains('item-quantity') || 
+            e.target.classList.contains('item-price') ||
+            e.target.id === 'hourlyRate' ||
+            e.target.id === 'hoursWorked' ||
+            e.target.id === 'vatRate' ||
+            e.target.id === 'currency' ||
+            e.target.id === 'reverseChargeVat') {
+            updateCalculations();
+        }
+    });
+    
+    // Handle client selection change to check for reverse charge VAT
+    clientSelect.addEventListener('change', function() {
+        checkReverseChargeVat();
+    });
+    
+    // Check if reverse charge VAT should be applied
+    function checkReverseChargeVat() {
+        const clientId = clientSelect.value;
+        if (!clientId) return;
+        
+        // Get the selected client's country
+        const selectedOption = clientSelect.options[clientSelect.selectedIndex];
+        const clientCountry = selectedOption.getAttribute('data-country');
+        
+        // Get the business country
+        const businessCountry = document.getElementById('businessId').getAttribute('data-country');
+        
+        // If countries are different, enable reverse charge VAT
+        if (clientCountry && businessCountry && clientCountry !== businessCountry) {
+            reverseChargeVatCheckbox.checked = true;
+        } else {
+            reverseChargeVatCheckbox.checked = false;
+        }
+        
+        // Update calculations
+        updateCalculations();
+    }
+    
+    // Hourly rate and hours worked should update the first item
+    hourlyRateInput.addEventListener('input', function() {
+        const firstItemPrice = document.querySelector('.invoice-item:first-child .item-price');
+        if (firstItemPrice) {
+            firstItemPrice.value = this.value;
+            updateItemAmount(firstItemPrice.closest('.invoice-item'));
+            updateCalculations();
+        }
+    });
+    
+    hoursWorkedInput.addEventListener('input', function() {
+        const firstItemQuantity = document.querySelector('.invoice-item:first-child .item-quantity');
+        if (firstItemQuantity) {
+            firstItemQuantity.value = this.value;
+            updateItemAmount(firstItemQuantity.closest('.invoice-item'));
+            updateCalculations();
+        }
+    });
+    
+    // Form submission
+    invoiceForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Validate form
+        if (!validateInvoiceForm()) {
+            return;
+        }
+        
+        // Get form data
+        const formData = new FormData(this);
+        const clientId = parseInt(formData.get('clientId'));
+        const businessId = parseInt(formData.get('businessId'));
+        const issueDate = formData.get('issueDate');
+        const dueDate = formData.get('dueDate');
+        const invoiceNumber = formData.get('invoiceNumber');
+        const hourlyRate = parseFloat(formData.get('hourlyRate') || 0);
+        const hoursWorked = parseFloat(formData.get('hoursWorked') || 0);
+        const vatRate = parseFloat(formData.get('vatRate') || 0);
+        const currency = formData.get('currency') || 'EUR';
+        const reverseChargeVat = formData.get('reverseChargeVat') === 'on';
+        const notes = formData.get('notes');
+        
+        // Collect invoice items
+        const items = [];
+        document.querySelectorAll('.invoice-item').forEach(item => {
+            const description = item.querySelector('.item-description').value;
+            const quantity = parseFloat(item.querySelector('.item-quantity').value);
+            const unitPrice = parseFloat(item.querySelector('.item-price').value);
+            const amount = parseFloat(item.querySelector('.item-amount').value);
+            
+            if (description && !isNaN(quantity) && !isNaN(unitPrice) && !isNaN(amount)) {
+                items.push({
+                    description: description,
+                    quantity: quantity,
+                    unit_price: unitPrice,
+                    amount: amount
+                });
+            }
+        });
+        
+        // Calculate totals
+        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+        const vatAmount = reverseChargeVat ? 0 : subtotal * (vatRate / 100);
+        const totalAmount = subtotal + vatAmount;
+        
+        // Create invoice object
+        const invoice = {
+            invoice: {
+                id: 0, // New invoice
+                invoice_number: invoiceNumber,
+                business_id: businessId,
+                client_id: clientId,
+                issue_date: issueDate,
+                due_date: dueDate,
+                hourly_rate: hourlyRate,
+                hours_worked: hoursWorked,
+                total_amount: totalAmount,
+                vat_rate: vatRate,
+                vat_amount: vatAmount,
+                reverse_charge_vat: reverseChargeVat,
+                currency: currency,
+                notes: notes,
+                status: "Draft"
+            },
+            items: items
+        };
+        
+        console.log('Submitting invoice:', invoice);
+        
+        fetch('/api/invoices', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(invoice)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error(`Server returned status: ${response.status} ${response.statusText}`);
+                    throw new Error(`Failed to create invoice (${response.status}): ${text || response.statusText}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Invoice created:', data);
+            alert('Invoice created successfully!');
+            window.location.href = '/invoices';
+        })
+        .catch(error => {
+            console.error('Error creating invoice:', error);
+            alert('Error creating invoice: ' + error.message);
+        });
+    });
+    
+    // Validate the invoice form
+    function validateInvoiceForm() {
+        // Check client
+        const clientId = document.getElementById('clientId').value;
+        if (!clientId || clientId === '0') {
+            alert('Please select a client');
+            document.getElementById('clientId').focus();
+            return false;
+        }
+        
+        // Check business
+        const businessId = document.getElementById('businessId').value;
+        if (!businessId || businessId === '0') {
+            alert('Business information is missing');
+            return false;
+        }
+        
+        // Check invoice number
+        const invoiceNumber = document.getElementById('invoiceNumber').value;
+        if (!invoiceNumber) {
+            alert('Please enter an invoice number');
+            document.getElementById('invoiceNumber').focus();
+            return false;
+        }
+        
+        // Check dates
+        const issueDate = document.getElementById('issueDate').value;
+        if (!issueDate) {
+            alert('Please enter an issue date');
+            document.getElementById('issueDate').focus();
+            return false;
+        }
+        
+        const dueDate = document.getElementById('dueDate').value;
+        if (!dueDate) {
+            alert('Please enter a due date');
+            document.getElementById('dueDate').focus();
+            return false;
+        }
+        
+        // Check invoice items
+        const items = document.querySelectorAll('.invoice-item');
+        if (items.length === 0) {
+            alert('Please add at least one invoice item');
+            return false;
+        }
+        
+        let hasValidItems = false;
+        items.forEach(item => {
+            const description = item.querySelector('.item-description').value;
+            const quantity = item.querySelector('.item-quantity').value;
+            const unitPrice = item.querySelector('.item-price').value;
+            
+            if (description && quantity && unitPrice) {
+                hasValidItems = true;
+            }
+        });
+        
+        if (!hasValidItems) {
+            alert('Please add at least one valid invoice item with description, quantity, and price');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    // Add invoice item function
+    function addInvoiceItem(isFirstItem) {
+        // If it's not the first item and we already have items, clone the template
+        if (!isFirstItem && document.querySelectorAll('.invoice-item').length > 0) {
+            const itemTemplate = document.querySelector('.invoice-item').cloneNode(true);
+            
+            // Clear values for new items
+            itemTemplate.querySelector('.item-description').value = '';
+            itemTemplate.querySelector('.item-quantity').value = '1';
+            itemTemplate.querySelector('.item-price').value = '';
+            itemTemplate.querySelector('.item-amount').value = '';
+            
+            // Add remove button
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-danger btn-sm position-absolute top-0 end-0 m-2';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.addEventListener('click', function() {
+                this.closest('.invoice-item').remove();
+                updateCalculations();
+            });
+            
+            itemTemplate.querySelector('.card-body').style.position = 'relative';
+            itemTemplate.querySelector('.card-body').appendChild(removeBtn);
+            
+            // Add event listeners for calculations
+            itemTemplate.querySelector('.item-quantity').addEventListener('input', function() {
+                updateItemAmount(this.closest('.invoice-item'));
+                updateCalculations();
+            });
+            
+            itemTemplate.querySelector('.item-price').addEventListener('input', function() {
+                updateItemAmount(this.closest('.invoice-item'));
+                updateCalculations();
+            });
+            
+            invoiceItems.appendChild(itemTemplate);
+            updateCalculations();
+        } 
+        // For the first item, just set up the existing template
+        else if (isFirstItem) {
+            const firstItem = document.querySelector('.invoice-item');
+            if (firstItem) {
+                // For the first item, set description to "Consulting Services"
+                firstItem.querySelector('.item-description').value = 'Consulting Services';
+                
+                // If hourly rate and hours worked are set, use them
+                if (hourlyRateInput.value) {
+                    firstItem.querySelector('.item-price').value = hourlyRateInput.value;
+                }
+                
+                if (hoursWorkedInput.value) {
+                    firstItem.querySelector('.item-quantity').value = hoursWorkedInput.value;
+                }
+                
+                updateItemAmount(firstItem);
+                updateCalculations();
+                
+                // Add event listeners for calculations
+                firstItem.querySelector('.item-quantity').addEventListener('input', function() {
+                    updateItemAmount(this.closest('.invoice-item'));
+                    updateCalculations();
+                });
+                
+                firstItem.querySelector('.item-price').addEventListener('input', function() {
+                    updateItemAmount(this.closest('.invoice-item'));
+                    updateCalculations();
+                });
+            }
+        }
+    }
+    
+    // Update item amount
+    function updateItemAmount(item) {
+        const quantity = parseFloat(item.querySelector('.item-quantity').value) || 0;
+        const price = parseFloat(item.querySelector('.item-price').value) || 0;
+        const amount = quantity * price;
+        item.querySelector('.item-amount').value = amount.toFixed(2);
+    }
+    
+    // Update calculations
+    function updateCalculations() {
+        let subtotal = 0;
+        
+        document.querySelectorAll('.invoice-item').forEach(item => {
+            updateItemAmount(item);
+            subtotal += parseFloat(item.querySelector('.item-amount').value) || 0;
+        });
+        
+        const vatRate = parseFloat(vatRateInput.value) || 0;
+        const reverseChargeVat = reverseChargeVatCheckbox.checked;
+        const vatAmount = reverseChargeVat ? 0 : (subtotal * vatRate / 100);
+        const total = subtotal + vatAmount;
+        const currency = currencySelect.value;
+        
+        document.getElementById('subtotal').textContent = subtotal.toFixed(2) + ' ' + currency;
+        document.getElementById('vat').textContent = vatAmount.toFixed(2) + ' ' + currency;
+        document.getElementById('total').textContent = total.toFixed(2) + ' ' + currency;
+        
+        // Update labels for unit price and amount
+        document.querySelectorAll('.invoice-item').forEach(item => {
+            const unitPriceLabel = item.querySelector('.item-price').previousElementSibling;
+            const amountLabel = item.querySelector('.item-amount').previousElementSibling;
+            
+            unitPriceLabel.textContent = 'Unit Price (' + currency + ')';
+            amountLabel.textContent = 'Amount (' + currency + ')';
+        });
+    }
+});
+</script>
+{{end}} 

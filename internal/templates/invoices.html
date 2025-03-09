@@ -1,0 +1,205 @@
+{{define "content"}}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <a href="/invoices/create" class="btn btn-primary">Create New Invoice</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h2 class="card-title">Invoices</h2>
+        <div class="table-responsive mt-4">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Invoice #</th>
+                        <th>Client</th>
+                        <th>Issue Date</th>
+                        <th>Due Date</th>
+                        <th>Amount (EUR)</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="invoicesTableBody">
+                    {{range .Invoices}}
+                    <tr>
+                        <td>{{.InvoiceNumber}}</td>
+                        <td>{{.ClientName}}</td>
+                        <td>{{.IssueDate.Format "2006-01-02"}}</td>
+                        <td>{{.DueDate.Format "2006-01-02"}}</td>
+                        <td>
+                            {{if .ReverseChargeVat}}
+                                {{.TotalAmount}}
+                            {{else}}
+                                {{add .TotalAmount .VatAmount}}
+                            {{end}}
+                        </td>
+                        <td>
+                            <span class="badge {{if eq .Status "paid"}}bg-success{{else if eq .Status "sent"}}bg-primary{{else}}bg-secondary{{end}}">
+                                {{.Status}}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <a href="/invoices/view/{{.ID}}" class="btn btn-sm btn-info">View</a>
+                                <button class="btn btn-sm btn-success generate-pdf" data-id="{{.ID}}">PDF</button>
+                                <button class="btn btn-sm btn-primary update-status" data-id="{{.ID}}" data-status="{{.Status}}">Status</button>
+                                <button class="btn btn-sm btn-danger delete-invoice" data-id="{{.ID}}" data-number="{{.InvoiceNumber}}">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                    {{else}}
+                    <tr>
+                        <td colspan="7" class="text-center">No invoices found</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Status Modal -->
+<div class="modal fade" id="statusModal" tabindex="-1" aria-labelledby="statusModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="statusModalLabel">Update Invoice Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="statusForm">
+                    <input type="hidden" id="invoiceId" value="0">
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-select" id="status" name="status" required>
+                            <option value="draft">Draft</option>
+                            <option value="sent">Sent</option>
+                            <option value="paid">Paid</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveStatusBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
+    const saveStatusBtn = document.getElementById('saveStatusBtn');
+    
+    // Generate PDF buttons
+    document.querySelectorAll('.generate-pdf').forEach(button => {
+        button.addEventListener('click', function() {
+            const invoiceId = this.getAttribute('data-id');
+            generatePDF(invoiceId);
+        });
+    });
+    
+    // Update status buttons
+    document.querySelectorAll('.update-status').forEach(button => {
+        button.addEventListener('click', function() {
+            const invoiceId = this.getAttribute('data-id');
+            const currentStatus = this.getAttribute('data-status');
+            
+            document.getElementById('invoiceId').value = invoiceId;
+            document.getElementById('status').value = currentStatus;
+            
+            statusModal.show();
+        });
+    });
+    
+    // Delete invoice buttons
+    document.querySelectorAll('.delete-invoice').forEach(button => {
+        button.addEventListener('click', function() {
+            const invoiceId = this.getAttribute('data-id');
+            const invoiceNumber = this.getAttribute('data-number');
+            
+            if (confirm(`Are you sure you want to delete invoice #${invoiceNumber}? This action cannot be undone.`)) {
+                deleteInvoice(invoiceId);
+            }
+        });
+    });
+    
+    // Save status
+    saveStatusBtn.addEventListener('click', function() {
+        const invoiceId = document.getElementById('invoiceId').value;
+        const status = document.getElementById('status').value;
+        
+        fetch(`/api/invoices/${invoiceId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: status })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to update status');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Status updated:', data);
+            statusModal.hide();
+            window.location.reload();
+        })
+        .catch(error => {
+            console.error('Error updating status:', error);
+            alert('Error updating status: ' + error.message);
+        });
+    });
+    
+    // Delete invoice
+    function deleteInvoice(invoiceId) {
+        fetch(`/api/invoices/${invoiceId}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(text || 'Failed to delete invoice');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Invoice deleted:', data);
+            alert('Invoice deleted successfully!');
+            window.location.reload();
+        })
+        .catch(error => {
+            console.error('Error deleting invoice:', error);
+            alert('Error deleting invoice: ' + error.message);
+        });
+    }
+    
+    // Generate PDF
+    function generatePDF(invoiceId) {
+        fetch(`/api/invoices/generate-pdf/${invoiceId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to generate PDF');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('PDF generated:', data);
+                // Ensure we have an absolute URL by prepending the origin if needed
+                const pdfUrl = data.url.startsWith('http') ? data.url : window.location.origin + data.url;
+                window.open(pdfUrl, '_blank');
+            })
+            .catch(error => {
+                console.error('Error generating PDF:', error);
+                alert('Error generating PDF: ' + error.message);
+            });
+    }
+});
+</script>
+{{end}} 

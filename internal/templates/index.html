@@ -1,0 +1,43 @@
+{{define "content"}}
+<div class="jumbotron">
+    <h2>Welcome to Simple Invoice</h2>
+    <p class="lead">A simple invoicing application for consultants.</p>
+    <hr class="my-4">
+    <p>Get started by setting up your business details and adding clients.</p>
+    <div class="d-flex gap-2">
+        <a class="btn btn-primary" href="/business" role="button">Set Up Business</a>
+        <a class="btn btn-success" href="/clients" role="button">Manage Clients</a>
+        <a class="btn btn-info" href="/invoices/create" role="button">Create Invoice</a>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Business Details</h5>
+                <p class="card-text">Set up your business details including name, address, VAT ID, and bank account information.</p>
+                <a href="/business" class="btn btn-primary">Go to Business</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Clients</h5>
+                <p class="card-text">Manage your clients and automatically fetch client details using VAT ID lookup.</p>
+                <a href="/clients" class="btn btn-primary">Go to Clients</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Invoices</h5>
+                <p class="card-text">Create, manage, and generate PDF invoices for your clients.</p>
+                <a href="/invoices" class="btn btn-primary">Go to Invoices</a>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}} 

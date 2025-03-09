@@ -1,0 +1,174 @@
+{{define "content"}}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="btn-group">
+            <a href="/invoices" class="btn btn-secondary">Back to Invoices</a>
+            <button class="btn btn-success" id="generatePdfBtn">Generate PDF</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h2>Invoice #{{.Invoice.InvoiceNumber}}</h2>
+                <p>Status: 
+                    <span class="badge {{if eq .Invoice.Status "paid"}}bg-success{{else if eq .Invoice.Status "sent"}}bg-primary{{else}}bg-secondary{{end}}">
+                        {{.Invoice.Status}}
+                    </span>
+                </p>
+            </div>
+            <div class="col-md-6 text-end">
+                {{if .Business.LogoPath}}
+                <img src="/data/images/{{filepath.Base .Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
+                {{end}}
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <h5>From:</h5>
+                <p>
+                    <strong>{{.Business.Name}}</strong><br>
+                    {{.Business.Address}}<br>
+                    {{.Business.City}}, {{.Business.PostalCode}}<br>
+                    {{.Business.Country}}<br>
+                    VAT ID: {{.Business.VatID}}
+                    {{if .Business.Email}}<br>Email: {{.Business.Email}}{{end}}
+                </p>
+            </div>
+            <div class="col-md-6">
+                <h5>To:</h5>
+                <p>
+                    <strong>{{.Client.Name}}</strong><br>
+                    {{.Client.Address}}<br>
+                    {{.Client.City}}, {{.Client.PostalCode}}<br>
+                    {{.Client.Country}}<br>
+                    VAT ID: {{.Client.VatID}}
+                </p>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <p>
+                    <strong>Issue Date:</strong> {{formatDate .Invoice.IssueDate}}<br>
+                    <strong>Due Date:</strong> {{formatDate .Invoice.DueDate}}
+                </p>
+            </div>
+        </div>
+        
+        <div class="table-responsive mt-4">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Unit Price ({{.Invoice.Currency}})</th>
+                        <th class="text-end">Amount ({{.Invoice.Currency}})</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Items}}
+                    <tr>
+                        <td>{{.Description}}</td>
+                        <td class="text-end">{{.Quantity}}</td>
+                        <td class="text-end">{{formatCurrency .UnitPrice}} {{.Invoice.Currency}}</td>
+                        <td class="text-end">{{formatCurrency .Amount}} {{.Invoice.Currency}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" class="text-end"><strong>Subtotal:</strong></td>
+                        <td class="text-end">{{formatCurrency .Invoice.TotalAmount}} {{.Invoice.Currency}}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="text-end">
+                            <strong>
+                                {{if .Invoice.ReverseChargeVat}}
+                                VAT (Reverse Charge):
+                                {{else}}
+                                VAT ({{.Invoice.VatRate}}%):
+                                {{end}}
+                            </strong>
+                        </td>
+                        <td class="text-end">
+                            {{if .Invoice.ReverseChargeVat}}
+                            0.00 {{.Invoice.Currency}}
+                            {{else}}
+                            {{formatCurrency .Invoice.VatAmount}} {{.Invoice.Currency}}
+                            {{end}}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="3" class="text-end"><strong>Total:</strong></td>
+                        <td class="text-end">
+                            {{if .Invoice.ReverseChargeVat}}
+                            {{formatCurrency .Invoice.TotalAmount}} {{.Invoice.Currency}}
+                            {{else}}
+                            {{formatCurrency (add .Invoice.TotalAmount .Invoice.VatAmount)}} {{.Invoice.Currency}}
+                            {{end}}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <h5>Payment Details:</h5>
+                <p>
+                    <strong>Bank:</strong> {{.Business.BankName}}<br>
+                    <strong>IBAN:</strong> {{.Business.IBAN}}<br>
+                    <strong>BIC:</strong> {{.Business.BIC}}
+                </p>
+            </div>
+            <div class="col-md-6">
+                {{if .Invoice.Notes}}
+                <h5>Notes:</h5>
+                <p>{{.Invoice.Notes}}</p>
+                {{end}}
+                
+                {{if .Invoice.ReverseChargeVat}}
+                <div class="alert alert-info">
+                    VAT reverse charge according to Article 196 of the EU VAT Directive 2006/112/EC. VAT to be accounted for by the recipient.
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const generatePdfBtn = document.getElementById('generatePdfBtn');
+    
+    generatePdfBtn.addEventListener('click', function() {
+        const invoiceId = {{.Invoice.ID}};
+        generatePDF(invoiceId);
+    });
+    
+    function generatePDF(invoiceId) {
+        fetch(`/api/invoices/generate-pdf/${invoiceId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to generate PDF');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('PDF generated:', data);
+                // Ensure we have an absolute URL by prepending the origin if needed
+                const pdfUrl = data.url.startsWith('http') ? data.url : window.location.origin + data.url;
+                window.open(pdfUrl, '_blank');
+            })
+            .catch(error => {
+                console.error('Error generating PDF:', error);
+                alert('Error generating PDF: ' + error.message);
+            });
+    }
+});
+</script>
+{{end}} 

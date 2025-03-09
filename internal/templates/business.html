@@ -1,0 +1,195 @@
+{{define "content"}}
+<div class="card">
+    <div class="card-body">
+        <h2 class="card-title">Business Details</h2>
+        <form id="businessForm" class="mt-4">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="vatId" class="form-label">VAT ID</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="vatId" name="vatId" value="{{.Business.VatID}}" required>
+                        <button class="btn btn-outline-secondary" type="button" id="lookupVatBtn">Lookup</button>
+                    </div>
+                    <div class="form-text">Enter VAT ID to automatically fetch your business details</div>
+                </div>
+                <div class="col-md-6">
+                    <label for="name" class="form-label">Business Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{.Business.Name}}" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="address" class="form-label">Address</label>
+                    <input type="text" class="form-control" id="address" name="address" value="{{.Business.Address}}" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <label for="city" class="form-label">City</label>
+                    <input type="text" class="form-control" id="city" name="city" value="{{.Business.City}}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="postalCode" class="form-label">Postal Code</label>
+                    <input type="text" class="form-control" id="postalCode" name="postalCode" value="{{.Business.PostalCode}}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="country" class="form-label">Country</label>
+                    <input type="text" class="form-control" id="country" name="country" value="{{.Business.Country}}" required>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" name="email" value="{{.Business.Email}}">
+                    <div class="form-text">Your email address will be displayed on invoices</div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="bankName" class="form-label">Bank Name (optional)</label>
+                    <input type="text" class="form-control" id="bankName" name="bankName" value="{{.Business.BankName}}">
+                </div>
+                <div class="col-md-6">
+                    <label for="bankAccount" class="form-label">Bank Account (optional)</label>
+                    <input type="text" class="form-control" id="bankAccount" name="bankAccount" value="{{.Business.BankAccount}}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="iban" class="form-label">IBAN (optional)</label>
+                    <input type="text" class="form-control" id="iban" name="iban" value="{{.Business.IBAN}}">
+                </div>
+                <div class="col-md-6">
+                    <label for="bic" class="form-label">BIC (optional)</label>
+                    <input type="text" class="form-control" id="bic" name="bic" value="{{.Business.BIC}}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="logo" class="form-label">Logo (optional)</label>
+                    <input type="file" class="form-control" id="logo" name="logo" accept="image/png,image/jpeg,image/svg+xml">
+                    <div class="form-text">Upload your business logo for invoices (optional)</div>
+                    {{if .Business.LogoPath}}
+                    <div class="mt-2">
+                        <img src="/data/images/{{filepath.Base .Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Business Details</button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const businessForm = document.getElementById('businessForm');
+    const logoInput = document.getElementById('logo');
+    const lookupVatBtn = document.getElementById('lookupVatBtn');
+
+    businessForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // First upload logo if selected
+        if (logoInput.files.length > 0) {
+            uploadLogo().then(saveBusiness);
+        } else {
+            saveBusiness();
+        }
+    });
+
+    // VAT lookup
+    lookupVatBtn.addEventListener('click', function() {
+        const vatId = document.getElementById('vatId').value;
+        if (!vatId) {
+            alert('Please enter a VAT ID');
+            return;
+        }
+        
+        fetch(`/api/clients/vat-lookup?vat_id=${encodeURIComponent(vatId)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('VAT ID lookup failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('name').value = data.name || '';
+                document.getElementById('address').value = data.address || '';
+                document.getElementById('city').value = data.city || '';
+                document.getElementById('postalCode').value = data.postal_code || '';
+                document.getElementById('country').value = data.country || '';
+            })
+            .catch(error => {
+                console.error('Error looking up VAT ID:', error);
+                alert('Error looking up VAT ID: ' + error.message);
+            });
+    });
+
+    function uploadLogo() {
+        const formData = new FormData();
+        formData.append('logo', logoInput.files[0]);
+
+        return fetch('/api/upload-logo', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to upload logo');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Logo uploaded:', data);
+            return data.path;
+        })
+        .catch(error => {
+            console.error('Error uploading logo:', error);
+            alert('Error uploading logo: ' + error.message);
+        });
+    }
+
+    function saveBusiness(logoPath) {
+        const business = {
+            id: {{.Business.ID}},
+            name: document.getElementById('name').value,
+            address: document.getElementById('address').value,
+            city: document.getElementById('city').value,
+            postal_code: document.getElementById('postalCode').value,
+            country: document.getElementById('country').value,
+            vat_id: document.getElementById('vatId').value,
+            email: document.getElementById('email').value,
+            bank_name: document.getElementById('bankName').value,
+            bank_account: document.getElementById('bankAccount').value,
+            iban: document.getElementById('iban').value,
+            bic: document.getElementById('bic').value,
+            logo_path: logoPath || '{{.Business.LogoPath}}'
+        };
+
+        fetch('/api/business', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(business)
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to save business details');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Business saved:', data);
+            alert('Business details saved successfully!');
+            window.location.reload();
+        })
+        .catch(error => {
+            console.error('Error saving business:', error);
+            alert('Error saving business details: ' + error.message);
+        });
+    }
+});
+</script>
+{{end}} 
