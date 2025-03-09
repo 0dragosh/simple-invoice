@@ -157,6 +157,8 @@ func parseTemplates(logger *services.Logger) (map[string]*template.Template, err
 
 		// Add to templates map
 		name := filepath.Base(tmpl)
+		// Remove the .html extension
+		name = strings.TrimSuffix(name, ".html")
 		templates[name] = t
 		logger.Debug("Parsed template: %s", name)
 	}
