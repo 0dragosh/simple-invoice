@@ -86,22 +86,24 @@ docker run -p 8080:8080 -v $(pwd)/data:/app/data simple-invoice
 
 This project uses GitHub Actions for continuous integration and deployment:
 
-### CI Workflow
+### CI/CD Workflow
 
-The CI workflow runs on every push to the main branch and on pull requests:
-- Builds the application
-- Runs tests
-- Builds the Docker image (without pushing)
+The CI/CD pipeline runs on:
+- Every push to any branch
+- Pull requests to the main branch
+- Tag creation (v*)
 
-### Container Publishing
+The workflow includes:
+- Building the application
+- Running tests with code coverage
+- Building and pushing Docker images to GitHub Container Registry (ghcr.io)
 
-The container publishing workflow:
-- Runs on pushes to the main branch and on tag creation (v*)
-- Builds and pushes the Docker image to GitHub Container Registry (ghcr.io)
-- Tags the image with:
-  - Latest tag for main branch
-  - Semantic version tags for releases (v1.0.0, v1.0, etc.)
-  - Short SHA for all pushes
+### Docker Images
+
+Docker images are automatically built and tagged with:
+- `latest` tag for the main branch
+- Semantic version tags for releases (e.g., `v1.0.0`, `v1.0`, `v1`)
+- Development tags with commit SHA for all other pushes (e.g., `dev-a1b2c3d`)
 
 ### Using the Container Image
 
@@ -112,9 +114,9 @@ docker run -p 8080:8080 -v /path/to/data:/app/data ghcr.io/0dragosh/simple-invoi
 
 ## Releasing New Versions
 
-This project uses semantic versioning (SemVer) for releases. A release script is provided to help automate the versioning process.
+This project uses semantic versioning (SemVer) for releases. There are two ways to create a new release:
 
-### Using the Release Script
+### 1. Using the Release Script (Local)
 
 The `release.sh` script helps increment the version number and create a new release. It works only on the main branch and tracks versions from git tags.
 
@@ -134,22 +136,27 @@ Examples:
 ./release.sh auto   # Auto-determine version increment
 ```
 
+### 2. Using GitHub Actions (Recommended)
+
+You can also create releases directly from GitHub using the "Release" workflow:
+
+1. Go to the "Actions" tab in your GitHub repository
+2. Select the "Release" workflow
+3. Click "Run workflow"
+4. Choose the version increment type (major, minor, patch, or auto)
+5. Click "Run workflow" to start the release process
+
+The workflow will:
+1. Determine the next version number
+2. Generate release notes based on commit messages
+3. Create a git tag for the new version
+4. Create a GitHub release
+5. Trigger the CI/CD pipeline to build and push Docker images
+
 ### Automatic Version Determination
 
-When using the `auto` option, the script analyzes commit messages to determine the appropriate version increment:
+When using the `auto` option, the system analyzes commit messages to determine the appropriate version increment:
 
 - **Major version** (x.0.0): Incremented when commits contain "BREAKING CHANGE", "feat!", "fix!", "refactor!", "perf!", or "major:"
 - **Minor version** (0.x.0): Incremented when commits contain "feat:", "feature:", or "minor:"
 - **Patch version** (0.0.x): Default for bug fixes, refactoring, and other changes
-
-### Release Process
-
-The script will:
-1. Check if you're on the main branch
-2. Ensure there are no uncommitted changes
-3. Fetch the latest tags
-4. Determine the next version number
-5. Generate release notes based on commit messages
-6. Create a git tag for the new version
-7. Push the tag to the remote repository
-8. Create a GitHub release (if GitHub CLI is installed)
