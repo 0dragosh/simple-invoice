@@ -196,9 +196,24 @@ jobs:
       run: |
         echo "Digests found:"
         ls -la
-
-        docker buildx imagetools create $(echo ${{ needs.prepare-docker.outputs.tags }} | tr ',' ' ' | sed 's/^/-t /') \
-          $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+        
+        # Create an array of digest references
+        DIGEST_ARGS=""
+        for digest in *; do
+          DIGEST_ARGS="$DIGEST_ARGS ghcr.io/${{ github.repository }}@sha256:$digest"
+        done
+        
+        # Split tags by comma and create tag arguments
+        TAG_ARGS=""
+        IFS=',' read -ra TAGS <<< "${{ needs.prepare-docker.outputs.tags }}"
+        for tag in "${TAGS[@]}"; do
+          TAG_ARGS="$TAG_ARGS -t $tag"
+        done
+        
+        # Create the manifest list with all tags pointing to all digests
+        echo "Creating manifest with tags: $TAG_ARGS"
+        echo "Using digests: $DIGEST_ARGS"
+        docker buildx imagetools create $TAG_ARGS $DIGEST_ARGS
 
     - name: Verify Docker image
       run: |
