@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_increment:
+        description: 'Version increment type'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+        - major
+        - minor
+        - patch
+        - auto
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Fetch all history for proper versioning
+
+    - name: Set up Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+
+    - name: Determine version increment
+      id: version
+      run: |
+        echo "Increment type: ${{ github.event.inputs.version_increment }}"
+
+        # Get the latest tag
+        latest_tag=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" | sort -V | tail -n 1)
+        if [ -z "$latest_tag" ]; then
+          latest_tag="v0.1.0"
+        fi
+        echo "Latest tag: $latest_tag"
+
+        # Determine increment type
+        increment_type="${{ github.event.inputs.version_increment }}"
+        if [ "$increment_type" == "auto" ]; then
+          # Logic to auto-determine increment type based on commit messages
+          commits=$(git log --pretty=format:"%s" $latest_tag..HEAD)
+          
+          if echo "$commits" | grep -i -E "BREAKING CHANGE|feat!:|fix!:|refactor!:|perf!:|major:" > /dev/null; then
+            increment_type="major"
+          elif echo "$commits" | grep -i -E "^feat:|^feature:|minor:" > /dev/null; then
+            increment_type="minor"
+          else
+            increment_type="patch"
+          fi
+          
+          echo "Auto-determined increment type: $increment_type"
+        fi
+
+        # Remove 'v' prefix if present
+        version=${latest_tag#v}
+
+        # Split version into components
+        IFS='.' read -r major minor patch <<< "$version"
+
+        # Increment version
+        case $increment_type in
+          major)
+            major=$((major + 1))
+            minor=0
+            patch=0
+            ;;
+          minor)
+            minor=$((minor + 1))
+            patch=0
+            ;;
+          patch)
+            patch=$((patch + 1))
+            ;;
+        esac
+
+        # New version
+        new_version="v$major.$minor.$patch"
+        echo "New version: $new_version"
+        echo "new_version=$new_version" >> $GITHUB_OUTPUT
+        echo "version_number=$major.$minor.$patch" >> $GITHUB_OUTPUT
+
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        latest_tag=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" | sort -V | tail -n 1)
+        if [ -z "$latest_tag" ]; then
+          latest_tag=$(git rev-list --max-parents=0 HEAD)
+        fi
+
+        echo "# ${{ steps.version.outputs.new_version }} Release Notes" > RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## Changes since $latest_tag" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+
+        # Group commits by type
+        echo "### Features" >> RELEASE_NOTES.md
+        git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i -E "^- feat|^- feature" || echo "- No new features" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+
+        echo "### Bug Fixes" >> RELEASE_NOTES.md
+        git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i "^- fix" || echo "- No bug fixes" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+
+        echo "### Performance Improvements" >> RELEASE_NOTES.md
+        git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i "^- perf" || echo "- No performance improvements" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+
+        echo "### Refactoring" >> RELEASE_NOTES.md
+        git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i "^- refactor" || echo "- No refactoring" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+
+        echo "### Documentation" >> RELEASE_NOTES.md
+        git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i "^- docs" || echo "- No documentation changes" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+
+        echo "### Other Changes" >> RELEASE_NOTES.md
+        git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i -v -E "^- (feat|fix|perf|refactor|docs|test|chore|style|ci|build)" || echo "- No other changes" >> RELEASE_NOTES.md
+
+        cat RELEASE_NOTES.md
+
+    - name: Create tag
+      run: |
+        git tag -a ${{ steps.version.outputs.new_version }} -m "Release ${{ steps.version.outputs.new_version }}"
+        git push origin ${{ steps.version.outputs.new_version }}
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.new_version }}
+        name: Release ${{ steps.version.outputs.new_version }}
+        body_path: RELEASE_NOTES.md
+        draft: false
+        prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}
+    # The CI workflow will automatically build and push the Docker image when the tag is created 

@@ -1,17 +1,24 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ '*' ]
-    tags: [ 'v*' ]
+    branches:
+    - main
+    - develop
+    - 'feature/**'
+    tags:
+    - 'v*'
   pull_request:
-    branches: [ main ]
+    branches:
+    - main
 
 jobs:
   build:
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -43,14 +50,67 @@ jobs:
         file: ./coverage.txt
         fail_ci_if_error: false
 
-  docker:
+  prepare-docker:
+    name: Prepare Docker Build
     runs-on: ubuntu-latest
     needs: build
-    permissions:
-      contents: read
-      packages: write
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tags: ${{ steps.meta.outputs.tags }}
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set version
+      id: version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/v* ]]; then
+          # For tags, use the tag name without the 'v' prefix
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version from tag: $VERSION"
+        else
+          # For non-tag pushes, use a development version with commit SHA
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION="dev-$SHORT_SHA"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using development version: $VERSION"
+        fi
+
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository }}
+        tags: |
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          type=semver,pattern={{version}},value=${{ env.VERSION }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=semver,pattern={{major}},value=${{ env.VERSION }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          type=raw,value=${{ env.VERSION }}
+          type=sha,format=short
+
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: prepare-docker
+    strategy:
+      matrix:
+        platform: [ linux/amd64, linux/arm64 ]
+      fail-fast: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: ${{ matrix.platform }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -60,26 +120,95 @@ jobs:
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ secrets.PAT_GHCR }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha
+    - name: Extract platform info
+      id: platform
+      run: |
+        # Extract OS and architecture from platform
+        OS=$(echo ${{ matrix.platform }} | cut -d/ -f1)
+        ARCH=$(echo ${{ matrix.platform }} | cut -d/ -f2)
+        echo "os=$OS" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "Building for $OS/$ARCH"
 
-    - name: Build and push Docker image
+    - name: Build and push by digest
+      id: build
       uses: docker/build-push-action@v6
       with:
         context: .
+        platforms: ${{ matrix.platform }}
         push: true
-        tags: ghcr.io/0dragosh/simple-invoice:1.0.1
-        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          VERSION=${{ needs.prepare-docker.outputs.version }}
+        outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        labels: |
+          org.opencontainers.image.title=simple-invoice
+          org.opencontainers.image.description=Simple Invoice Application
+          org.opencontainers.image.url=https://github.com/${{ github.repository }}
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.version=${{ needs.prepare-docker.outputs.version }}
+          org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.licenses=MIT
+
+    - name: Export digest
+      run: |
+        mkdir -p /tmp/digests
+        digest="${{ steps.build.outputs.digest }}"
+        touch "/tmp/digests/${digest#sha256:}"
+        echo "Digest: $digest"
+
+    - name: Upload digest
+      uses: actions/upload-artifact@v4
+      with:
+        name: digests-${{ steps.platform.outputs.os }}-${{ steps.platform.outputs.arch }}
+        path: /tmp/digests/*
+        if-no-files-found: error
+        retention-days: 1
+
+  docker-merge:
+    name: Merge and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [ prepare-docker, docker-build ]
+    steps:
+    - name: Download digests
+      uses: actions/download-artifact@v4
+      with:
+        path: /tmp/digests
+        pattern: digests-*
+        merge-multiple: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create manifest list and push
+      working-directory: /tmp/digests
+      run: |
+        echo "Digests found:"
+        ls -la
+
+        docker buildx imagetools create $(echo ${{ needs.prepare-docker.outputs.tags }} | tr ',' ' ' | sed 's/^/-t /') \
+          $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+
+    - name: Verify Docker image
+      run: |
+        echo "Verifying Docker image was pushed successfully..."
+        # Wait a moment for the registry to update
+        sleep 10
+        # Try to pull the image we just pushed
+        docker pull ghcr.io/${{ github.repository }}:${{ needs.prepare-docker.outputs.version }}
+        echo "Docker image verified successfully!"
+
+    - name: Inspect image
+      run: |
+        docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ needs.prepare-docker.outputs.version }}

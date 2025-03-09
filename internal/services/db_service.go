@@ -256,7 +256,8 @@ func (s *DBService) initDB() error {
 			city TEXT NOT NULL,
 			postal_code TEXT NOT NULL,
 			country TEXT NOT NULL,
-			vat_id TEXT NOT NULL
+			vat_id TEXT NOT NULL,
+			created_date TIMESTAMP
 		)
 	`)
 	if err != nil {
@@ -297,7 +298,8 @@ func (s *DBService) initDB() error {
 				city TEXT NOT NULL,
 				postal_code TEXT NOT NULL,
 				country TEXT NOT NULL,
-				vat_id TEXT NOT NULL
+				vat_id TEXT NOT NULL,
+				created_date TIMESTAMP
 			);
 			
 			-- Copy data from old table to new table
@@ -510,9 +512,9 @@ func (s *DBService) SaveClient(client *models.Client) error {
 	if client.ID == 0 {
 		// Insert new client
 		result, err := s.db.Exec(`
-			INSERT INTO clients (name, address, city, postal_code, country, vat_id)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID)
+			INSERT INTO clients (name, address, city, postal_code, country, vat_id, created_date)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate)
 		if err != nil {
 			return err
 		}
@@ -527,9 +529,9 @@ func (s *DBService) SaveClient(client *models.Client) error {
 		// Update existing client
 		_, err := s.db.Exec(`
 			UPDATE clients
-			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?
+			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, created_date = ?
 			WHERE id = ?
-		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.ID)
+		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, client.ID)
 		if err != nil {
 			return err
 		}
@@ -544,7 +546,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 
 	var client models.Client
 	query := `
-		SELECT id, name, address, city, postal_code, country, vat_id
+		SELECT id, name, address, city, postal_code, country, vat_id, created_date
 		FROM clients
 		WHERE id = ?
 	`
@@ -558,6 +560,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 		&client.PostalCode,
 		&client.Country,
 		&client.VatID,
+		&client.CreatedDate,
 	)
 
 	if err != nil {
@@ -576,7 +579,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 // GetClients retrieves all clients from the database
 func (s *DBService) GetClients() ([]models.Client, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, address, city, postal_code, country, vat_id
+		SELECT id, name, address, city, postal_code, country, vat_id, created_date
 		FROM clients
 		ORDER BY name
 	`)
@@ -588,7 +591,7 @@ func (s *DBService) GetClients() ([]models.Client, error) {
 	var clients []models.Client
 	for rows.Next() {
 		var client models.Client
-		if err := rows.Scan(&client.ID, &client.Name, &client.Address, &client.City, &client.PostalCode, &client.Country, &client.VatID); err != nil {
+		if err := rows.Scan(&client.ID, &client.Name, &client.Address, &client.City, &client.PostalCode, &client.Country, &client.VatID, &client.CreatedDate); err != nil {
 			return nil, err
 		}
 		clients = append(clients, client)
