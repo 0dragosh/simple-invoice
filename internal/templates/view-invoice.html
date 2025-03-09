@@ -70,19 +70,20 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {{$currency := .Invoice.Currency}}
                     {{range .Items}}
                     <tr>
                         <td>{{.Description}}</td>
                         <td class="text-end">{{.Quantity}}</td>
-                        <td class="text-end">{{formatCurrency .UnitPrice}} {{.Invoice.Currency}}</td>
-                        <td class="text-end">{{formatCurrency .Amount}} {{.Invoice.Currency}}</td>
+                        <td class="text-end">{{formatCurrency .UnitPrice}} {{$currency}}</td>
+                        <td class="text-end">{{formatCurrency .Amount}} {{$currency}}</td>
                     </tr>
                     {{end}}
                 </tbody>
                 <tfoot>
                     <tr>
                         <td colspan="3" class="text-end"><strong>Subtotal:</strong></td>
-                        <td class="text-end">{{formatCurrency .Invoice.TotalAmount}} {{.Invoice.Currency}}</td>
+                        <td class="text-end">{{formatCurrency .Invoice.TotalAmount}} {{$currency}}</td>
                     </tr>
                     <tr>
                         <td colspan="3" class="text-end">
@@ -96,9 +97,9 @@
                         </td>
                         <td class="text-end">
                             {{if .Invoice.ReverseChargeVat}}
-                            0.00 {{.Invoice.Currency}}
+                            0.00 {{$currency}}
                             {{else}}
-                            {{formatCurrency .Invoice.VatAmount}} {{.Invoice.Currency}}
+                            {{formatCurrency .Invoice.VatAmount}} {{$currency}}
                             {{end}}
                         </td>
                     </tr>
@@ -106,9 +107,9 @@
                         <td colspan="3" class="text-end"><strong>Total:</strong></td>
                         <td class="text-end">
                             {{if .Invoice.ReverseChargeVat}}
-                            {{formatCurrency .Invoice.TotalAmount}} {{.Invoice.Currency}}
+                            {{formatCurrency .Invoice.TotalAmount}} {{$currency}}
                             {{else}}
-                            {{formatCurrency (add .Invoice.TotalAmount .Invoice.VatAmount)}} {{.Invoice.Currency}}
+                            {{formatCurrency (add .Invoice.TotalAmount .Invoice.VatAmount)}} {{$currency}}
                             {{end}}
                         </td>
                     </tr>
@@ -151,22 +152,73 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function generatePDF(invoiceId) {
+        console.log(`Generating PDF for invoice ID: ${invoiceId}`);
+        
+        // Show loading indicator
+        const generatePdfBtn = document.getElementById('generatePdfBtn');
+        const originalBtnText = generatePdfBtn.textContent || 'Generate PDF';
+        generatePdfBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+        generatePdfBtn.disabled = true;
+        
+        console.log(`Sending fetch request to /api/invoices/generate-pdf/${invoiceId}`);
+        
         fetch(`/api/invoices/generate-pdf/${invoiceId}`)
             .then(response => {
+                console.log(`Received response with status: ${response.status}`);
                 if (!response.ok) {
-                    throw new Error('Failed to generate PDF');
+                    return response.json().then(data => {
+                        throw new Error(data.message || 'Failed to generate PDF');
+                    }).catch(e => {
+                        // If we can't parse JSON, use the status text
+                        throw new Error(`Failed to generate PDF: ${response.status} ${response.statusText}`);
+                    });
                 }
                 return response.json();
             })
             .then(data => {
-                console.log('PDF generated:', data);
+                console.log('PDF generated successfully:', data);
                 // Ensure we have an absolute URL by prepending the origin if needed
                 const pdfUrl = data.url.startsWith('http') ? data.url : window.location.origin + data.url;
-                window.open(pdfUrl, '_blank');
+                console.log(`Opening PDF at URL: ${pdfUrl}`);
+                
+                // Try to open in a new tab
+                const newWindow = window.open(pdfUrl, '_blank');
+                
+                // If popup was blocked or failed, show a direct link
+                if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+                    console.log('Window.open() was blocked or failed, showing direct link');
+                    
+                    // Remove any existing download link
+                    const existingLink = document.getElementById('direct-download-link');
+                    if (existingLink) {
+                        existingLink.remove();
+                    }
+                    
+                    // Create a direct download link
+                    const downloadLink = document.createElement('a');
+                    downloadLink.id = 'direct-download-link';
+                    downloadLink.href = pdfUrl;
+                    downloadLink.target = '_blank';
+                    downloadLink.className = 'btn btn-info mt-2';
+                    downloadLink.textContent = 'Download PDF';
+                    downloadLink.style.display = 'block';
+                    
+                    // Add the link after the button
+                    generatePdfBtn.parentNode.appendChild(downloadLink);
+                    
+                    // Show a message
+                    alert('PDF generated. Click the Download PDF button to view it.');
+                }
             })
             .catch(error => {
                 console.error('Error generating PDF:', error);
                 alert('Error generating PDF: ' + error.message);
+            })
+            .finally(() => {
+                // Restore button state
+                console.log('Restoring button state');
+                generatePdfBtn.innerHTML = originalBtnText;
+                generatePdfBtn.disabled = false;
             });
     }
 });
