@@ -534,33 +534,48 @@ func (s *DBService) GetBusinesses() ([]models.Business, error) {
 // SaveClient saves a client to the database
 func (s *DBService) SaveClient(client *models.Client) error {
 	// No validation for VAT ID - accept as provided
+	s.logger.Debug("SaveClient called with client: %+v", client)
+
+	// Ensure created_date is not nil
+	if client.CreatedDate == nil {
+		now := time.Now()
+		client.CreatedDate = &now
+		s.logger.Debug("Created date was nil, using current time: %v", now)
+	}
 
 	if client.ID == 0 {
 		// Insert new client
+		s.logger.Debug("Inserting new client: %s", client.Name)
 		result, err := s.db.Exec(`
 			INSERT INTO clients (name, address, city, postal_code, country, vat_id, created_date, deleted)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, boolToInt(client.Deleted))
 		if err != nil {
+			s.logger.Error("Failed to insert client: %v", err)
 			return err
 		}
 
 		id, err := result.LastInsertId()
 		if err != nil {
+			s.logger.Error("Failed to get last insert ID: %v", err)
 			return err
 		}
 
 		client.ID = int(id)
+		s.logger.Info("Successfully inserted client with ID: %d", client.ID)
 	} else {
 		// Update existing client
+		s.logger.Debug("Updating existing client with ID: %d", client.ID)
 		_, err := s.db.Exec(`
 			UPDATE clients
 			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, created_date = ?, deleted = ?
 			WHERE id = ?
 		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, boolToInt(client.Deleted), client.ID)
 		if err != nil {
+			s.logger.Error("Failed to update client: %v", err)
 			return err
 		}
+		s.logger.Info("Successfully updated client with ID: %d", client.ID)
 	}
 
 	return nil

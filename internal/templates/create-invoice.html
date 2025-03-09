@@ -155,6 +155,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const currencySelect = document.getElementById('currency');
     const reverseChargeVatCheckbox = document.getElementById('reverseChargeVat');
     const clientSelect = document.getElementById('clientId');
+    const submitBtn = document.querySelector('button[type="submit"]');
+    let isSubmitting = false; // Flag to prevent duplicate submissions
     
     // Ensure EUR is selected by default
     currencySelect.value = 'EUR';
@@ -193,13 +195,12 @@ document.addEventListener('DOMContentLoaded', function() {
         'default': 'EUR'
     };
     
-    // Set currency based on client's country
     document.getElementById('clientId').addEventListener('change', function() {
         const selectedOption = this.options[this.selectedIndex];
         const clientCountry = selectedOption.getAttribute('data-country');
         
         if (clientCountry) {
-            const currency = countryCurrencyMap[clientCountry] || countryCurrencyMap['default'];
+            const currency = countryCurrencyMap['default'];
             document.getElementById('currency').value = currency;
             
             // Check if the client is from the EU
@@ -275,116 +276,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Form submission
-    invoiceForm.addEventListener('submit', function(e) {
+    // Add a direct click event listener to the submit button
+    submitBtn.addEventListener('click', function(e) {
         e.preventDefault();
-        console.log('Form submitted');
-        
-        // Validate form
-        if (!validateInvoiceForm()) {
-            console.log('Form validation failed');
-            return;
+        e.stopPropagation(); // Stop event propagation to prevent form submission
+        console.log('Submit button clicked directly');
+        if (!isSubmitting) {
+            submitInvoice();
         }
-        
-        // Get form data
-        const formData = new FormData(this);
-        const clientId = parseInt(formData.get('clientId'));
-        const businessId = parseInt(formData.get('businessId'));
-        const issueDate = formData.get('issueDate');
-        const dueDate = formData.get('dueDate');
-        const invoiceNumber = formData.get('invoiceNumber');
-        const hourlyRate = parseFloat(formData.get('hourlyRate') || 0);
-        const hoursWorked = parseFloat(formData.get('hoursWorked') || 0);
-        const vatRate = parseFloat(formData.get('vatRate') || 0);
-        const currency = formData.get('currency') || 'EUR';
-        const reverseChargeVat = formData.get('reverseChargeVat') === 'on';
-        const notes = formData.get('notes');
-        
-        console.log('Form data collected:', {
-            clientId, businessId, issueDate, dueDate, invoiceNumber,
-            hourlyRate, hoursWorked, vatRate, currency, reverseChargeVat, notes
-        });
-        
-        // Collect invoice items
-        const items = [];
-        document.querySelectorAll('.invoice-item').forEach((item, index) => {
-            const description = item.querySelector('.item-description').value;
-            const quantity = parseFloat(item.querySelector('.item-quantity').value);
-            const unitPrice = parseFloat(item.querySelector('.item-price').value);
-            const amount = parseFloat(item.querySelector('.item-amount').value);
-            
-            console.log(`Item ${index+1}:`, { description, quantity, unitPrice, amount });
-            
-            if (description && !isNaN(quantity) && !isNaN(unitPrice) && !isNaN(amount)) {
-                items.push({
-                    description: description,
-                    quantity: quantity,
-                    unit_price: unitPrice,
-                    amount: amount
-                });
-            } else {
-                console.log(`Item ${index+1} skipped due to invalid data`);
-            }
-        });
-        
-        console.log('Collected items:', items);
-        
-        // Calculate totals
-        const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-        const vatAmount = reverseChargeVat ? 0 : subtotal * (vatRate / 100);
-        const totalAmount = subtotal + vatAmount;
-        
-        // Create invoice object
-        const invoice = {
-            invoice: {
-                id: 0, // New invoice
-                invoice_number: invoiceNumber,
-                business_id: businessId,
-                client_id: clientId,
-                issue_date: issueDate,
-                due_date: dueDate,
-                hourly_rate: hourlyRate,
-                hours_worked: hoursWorked,
-                total_amount: totalAmount,
-                vat_rate: vatRate,
-                vat_amount: vatAmount,
-                reverse_charge_vat: reverseChargeVat,
-                currency: currency,
-                notes: notes,
-                status: "Draft"
-            },
-            items: items
-        };
-        
-        console.log('Submitting invoice:', invoice);
-        
-        fetch('/api/invoices', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(invoice)
-        })
-        .then(response => {
-            console.log('Response received:', response.status, response.statusText);
-            if (!response.ok) {
-                return response.text().then(text => {
-                    console.error(`Server returned status: ${response.status} ${response.statusText}`);
-                    console.error('Response body:', text);
-                    throw new Error(`Failed to create invoice (${response.status}): ${text || response.statusText}`);
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Invoice created:', data);
-            alert('Invoice created successfully!');
-            window.location.href = '/invoices';
-        })
-        .catch(error => {
-            console.error('Error creating invoice:', error);
-            alert('Error creating invoice: ' + error.message);
-        });
     });
     
     // Validate the invoice form
@@ -465,6 +364,13 @@ document.addEventListener('DOMContentLoaded', function() {
             itemTemplate.querySelector('.item-price').value = '';
             itemTemplate.querySelector('.item-amount').value = '';
             
+            // Add name attributes to form elements for proper form submission
+            const itemIndex = document.querySelectorAll('.invoice-item').length;
+            itemTemplate.querySelector('.item-description').name = `item_description_${itemIndex}`;
+            itemTemplate.querySelector('.item-quantity').name = `item_quantity_${itemIndex}`;
+            itemTemplate.querySelector('.item-price').name = `item_price_${itemIndex}`;
+            itemTemplate.querySelector('.item-amount').name = `item_amount_${itemIndex}`;
+            
             // Add remove button
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
@@ -498,6 +404,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (firstItem) {
                 // For the first item, set description to "Consulting Services"
                 firstItem.querySelector('.item-description').value = 'Consulting Services';
+                
+                // Add name attributes to form elements for proper form submission
+                firstItem.querySelector('.item-description').name = 'item_description_0';
+                firstItem.querySelector('.item-quantity').name = 'item_quantity_0';
+                firstItem.querySelector('.item-price').name = 'item_price_0';
+                firstItem.querySelector('.item-amount').name = 'item_amount_0';
                 
                 // If hourly rate and hours worked are set, use them
                 if (hourlyRateInput.value) {
@@ -560,6 +472,210 @@ document.addEventListener('DOMContentLoaded', function() {
             unitPriceLabel.textContent = 'Unit Price (' + currency + ')';
             amountLabel.textContent = 'Amount (' + currency + ')';
         });
+    }
+    
+    // Function to handle invoice submission
+    function submitInvoice() {
+        try {
+            console.log('Starting invoice submission process');
+            
+            // Prevent duplicate submissions
+            if (isSubmitting) {
+                console.log('Already submitting, ignoring duplicate submission');
+                return;
+            }
+            
+            isSubmitting = true;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating...';
+            
+            // Validate form
+            if (!validateInvoiceForm()) {
+                console.log('Form validation failed');
+                isSubmitting = false;
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Invoice';
+                return;
+            }
+            
+            try {
+                // Get form data
+                const formData = new FormData(invoiceForm);
+                const clientId = parseInt(formData.get('clientId'));
+                const businessId = parseInt(formData.get('businessId'));
+                const issueDate = formData.get('issueDate');
+                const dueDate = formData.get('dueDate');
+                const invoiceNumber = formData.get('invoiceNumber');
+                const hourlyRate = parseFloat(formData.get('hourlyRate') || 0);
+                const hoursWorked = parseFloat(formData.get('hoursWorked') || 0);
+                const vatRate = parseFloat(formData.get('vatRate') || 0);
+                const currency = formData.get('currency') || 'EUR';
+                const reverseChargeVat = formData.get('reverseChargeVat') === 'on';
+                const notes = formData.get('notes');
+                
+                console.log('Form data collected:', {
+                    clientId, businessId, issueDate, dueDate, invoiceNumber,
+                    hourlyRate, hoursWorked, vatRate, currency, reverseChargeVat, notes
+                });
+                
+                // Collect invoice items
+                const items = [];
+                let itemsValid = true;
+                
+                document.querySelectorAll('.invoice-item').forEach((item, index) => {
+                    try {
+                        const description = item.querySelector('.item-description').value;
+                        const quantity = parseFloat(item.querySelector('.item-quantity').value);
+                        const unitPrice = parseFloat(item.querySelector('.item-price').value);
+                        const amount = parseFloat(item.querySelector('.item-amount').value);
+                        
+                        console.log(`Item ${index+1}:`, { description, quantity, unitPrice, amount });
+                        
+                        if (description && !isNaN(quantity) && !isNaN(unitPrice) && !isNaN(amount)) {
+                            items.push({
+                                description: description,
+                                quantity: quantity,
+                                unit_price: unitPrice,
+                                amount: amount
+                            });
+                        } else {
+                            console.log(`Item ${index+1} skipped due to invalid data`);
+                            if (description) {
+                                // If there's a description but other fields are invalid, consider it an error
+                                itemsValid = false;
+                                console.error(`Item ${index+1} has description but invalid numeric data`);
+                            }
+                        }
+                    } catch (itemError) {
+                        console.error(`Error processing item ${index+1}:`, itemError);
+                        itemsValid = false;
+                    }
+                });
+                
+                console.log('Collected items:', items);
+                
+                if (items.length === 0) {
+                    console.error('No valid items collected');
+                    alert('Please add at least one valid invoice item with description, quantity, and price');
+                    isSubmitting = false;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Invoice';
+                    return;
+                }
+                
+                if (!itemsValid) {
+                    console.error('Some items have invalid data');
+                    alert('Some invoice items have invalid data. Please check quantity and price fields.');
+                    isSubmitting = false;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Invoice';
+                    return;
+                }
+                
+                // Calculate totals
+                const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+                const vatAmount = reverseChargeVat ? 0 : subtotal * (vatRate / 100);
+                const totalAmount = subtotal + vatAmount;
+                
+                // Create invoice object
+                const invoice = {
+                    invoice: {
+                        id: 0, // New invoice
+                        invoice_number: invoiceNumber,
+                        business_id: businessId,
+                        client_id: clientId,
+                        issue_date: issueDate,
+                        due_date: dueDate,
+                        hourly_rate: hourlyRate,
+                        hours_worked: hoursWorked,
+                        total_amount: totalAmount,
+                        vat_rate: vatRate,
+                        vat_amount: vatAmount,
+                        reverse_charge_vat: reverseChargeVat,
+                        currency: currency,
+                        notes: notes,
+                        status: "Draft"
+                    },
+                    items: items
+                };
+                
+                console.log('Submitting invoice:', JSON.stringify(invoice));
+                
+                // Add a timeout to prevent the button from hanging indefinitely
+                const submissionTimeout = setTimeout(() => {
+                    console.error('Submission timeout reached');
+                    isSubmitting = false;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Invoice';
+                    alert('The request is taking too long. Please try again.');
+                }, 10000); // 10 second timeout
+                
+                // Use XMLHttpRequest instead of fetch for better error handling
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/invoices', true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                
+                xhr.onload = function() {
+                    clearTimeout(submissionTimeout);
+                    console.log('XHR response received:', xhr.status, xhr.statusText);
+                    console.log('Response body:', xhr.responseText);
+                    
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            console.log('Invoice created:', data);
+                            alert('Invoice created successfully!');
+                            window.location.href = '/invoices';
+                        } catch (e) {
+                            console.error('Failed to parse JSON response:', e);
+                            console.error('Raw response:', xhr.responseText);
+                            alert('Invoice was created but there was an error processing the response. Please check the invoices page.');
+                            window.location.href = '/invoices';
+                        }
+                    } else {
+                        console.error(`Server returned status: ${xhr.status} ${xhr.statusText}`);
+                        console.error('Response body:', xhr.responseText);
+                        alert(`Failed to create invoice (${xhr.status}): ${xhr.responseText || xhr.statusText}`);
+                        isSubmitting = false;
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Create Invoice';
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    clearTimeout(submissionTimeout);
+                    console.error('Network error occurred');
+                    alert('Network error occurred. Please check your connection and try again.');
+                    isSubmitting = false;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Invoice';
+                };
+                
+                xhr.ontimeout = function() {
+                    clearTimeout(submissionTimeout);
+                    console.error('Request timed out');
+                    alert('Request timed out. Please try again.');
+                    isSubmitting = false;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Invoice';
+                };
+                
+                xhr.send(JSON.stringify(invoice));
+                
+            } catch (dataError) {
+                console.error('Error preparing invoice data:', dataError);
+                alert('Error preparing invoice data: ' + dataError.message);
+                isSubmitting = false;
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Invoice';
+            }
+        } catch (error) {
+            console.error('Unhandled error in submitInvoice:', error);
+            alert('An unexpected error occurred: ' + error.message);
+            isSubmitting = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Invoice';
+        }
     }
 });
 </script>

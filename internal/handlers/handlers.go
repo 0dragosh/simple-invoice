@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -481,10 +483,10 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(clients)
 
 	case http.MethodPost:
-		h.logger.Info("Received request to create/update client")
+		w.Header().Set("Content-Type", "application/json")
 
-		// Decode the client directly
 		var client models.Client
+		h.logger.Debug("Decoding client JSON from request body")
 		if err := json.NewDecoder(r.Body).Decode(&client); err != nil {
 			h.logger.Error("Failed to decode client JSON: %v", err)
 			http.Error(w, fmt.Sprintf("Invalid client data: %v", err), http.StatusBadRequest)
@@ -495,17 +497,31 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		if client.CreatedDate == nil {
 			now := time.Now()
 			client.CreatedDate = &now
+			h.logger.Debug("No created date provided, using current time: %v", now)
 		}
 
-		h.logger.Info("Processing client with ID: %d", client.ID)
+		h.logger.Info("Processing client with ID: %d, Name: %s, VAT ID: %s, Country: %s",
+			client.ID, client.Name, client.VatID, client.Country)
 
+		// Special handling for UK VAT IDs
+		if strings.HasPrefix(strings.ToUpper(client.VatID), "GB") {
+			h.logger.Info("UK VAT ID detected: %s", client.VatID)
+
+			// Ensure country is set to GB for UK VAT IDs
+			if client.Country != "GB" {
+				h.logger.Info("Setting country to GB for UK VAT ID")
+				client.Country = "GB"
+			}
+		}
+
+		h.logger.Debug("Saving client to database: %+v", client)
 		if err := h.dbService.SaveClient(&client); err != nil {
 			h.logger.Error("Failed to save client: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to save client: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		h.logger.Info("Successfully saved client: %s", client.Name)
+		h.logger.Info("Successfully saved client: %s with ID: %d", client.Name, client.ID)
 		json.NewEncoder(w).Encode(client)
 
 	default:
@@ -622,11 +638,38 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 	case http.MethodPost:
 		h.logger.Info("Received request to create/update invoice")
 
+		// Read the request body for logging
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			h.logger.Error("Failed to read request body: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Log the raw request body for debugging
+		h.logger.Debug("Raw request body: %s", string(bodyBytes))
+
+		// Create a new reader from the bytes for further processing
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
 		// First, decode the raw JSON to handle date strings manually
 		var rawRequest map[string]json.RawMessage
 		if err := json.NewDecoder(r.Body).Decode(&rawRequest); err != nil {
 			h.logger.Error("Failed to decode invoice JSON: %v", err)
 			http.Error(w, fmt.Sprintf("Invalid invoice data: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Check if required fields exist in the request
+		if _, ok := rawRequest["invoice"]; !ok {
+			h.logger.Error("Missing 'invoice' field in request")
+			http.Error(w, "Missing 'invoice' field in request", http.StatusBadRequest)
+			return
+		}
+
+		if _, ok := rawRequest["items"]; !ok {
+			h.logger.Error("Missing 'items' field in request")
+			http.Error(w, "Missing 'items' field in request", http.StatusBadRequest)
 			return
 		}
 
@@ -645,6 +688,10 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, fmt.Sprintf("Invalid invoice items: %v", err), http.StatusBadRequest)
 			return
 		}
+
+		// Log the parsed data for debugging
+		h.logger.Debug("Parsed invoice data: %+v", rawInvoice)
+		h.logger.Debug("Parsed items: %+v", items)
 
 		// Create the invoice object
 		invoice := models.Invoice{
