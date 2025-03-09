@@ -51,4 +51,4 @@ ENV LOG_LEVEL="INFO"
 VOLUME ["/app/data"]
 
 # Run the application
-CMD ["./simple-invoice"] 
+CMD ["./server"] 
