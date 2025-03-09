@@ -257,12 +257,36 @@ func (s *DBService) initDB() error {
 			postal_code TEXT NOT NULL,
 			country TEXT NOT NULL,
 			vat_id TEXT NOT NULL,
-			created_date TIMESTAMP
+			created_date TIMESTAMP,
+			deleted INTEGER DEFAULT 0
 		)
 	`)
 	if err != nil {
 		s.logger.Error("Failed to create clients table: %v", err)
 		return fmt.Errorf("failed to create clients table: %w", err)
+	}
+
+	// Check if we need to add the deleted column to the clients table
+	s.logger.Debug("Checking if deleted column exists in clients table")
+	var deletedColumnExists bool
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('clients')
+		WHERE name = 'deleted'
+	`).Scan(&deletedColumnExists)
+	if err != nil {
+		s.logger.Error("Failed to check if deleted column exists: %v", err)
+		return fmt.Errorf("failed to check if deleted column exists: %w", err)
+	}
+
+	if !deletedColumnExists {
+		s.logger.Info("Adding deleted column to clients table")
+		_, err = s.db.Exec(`ALTER TABLE clients ADD COLUMN deleted INTEGER DEFAULT 0`)
+		if err != nil {
+			s.logger.Error("Failed to add deleted column: %v", err)
+			return fmt.Errorf("failed to add deleted column: %w", err)
+		}
+		s.logger.Info("Successfully added deleted column to clients table")
 	}
 
 	// Check if we need to remove the company_number column from the clients table
@@ -514,9 +538,9 @@ func (s *DBService) SaveClient(client *models.Client) error {
 	if client.ID == 0 {
 		// Insert new client
 		result, err := s.db.Exec(`
-			INSERT INTO clients (name, address, city, postal_code, country, vat_id, created_date)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate)
+			INSERT INTO clients (name, address, city, postal_code, country, vat_id, created_date, deleted)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, boolToInt(client.Deleted))
 		if err != nil {
 			return err
 		}
@@ -531,9 +555,9 @@ func (s *DBService) SaveClient(client *models.Client) error {
 		// Update existing client
 		_, err := s.db.Exec(`
 			UPDATE clients
-			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, created_date = ?
+			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, created_date = ?, deleted = ?
 			WHERE id = ?
-		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, client.ID)
+		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, boolToInt(client.Deleted), client.ID)
 		if err != nil {
 			return err
 		}
@@ -548,7 +572,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 
 	var client models.Client
 	query := `
-		SELECT id, name, address, city, postal_code, country, vat_id, created_date
+		SELECT id, name, address, city, postal_code, country, vat_id, created_date, deleted
 		FROM clients
 		WHERE id = ?
 	`
@@ -563,6 +587,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 		&client.Country,
 		&client.VatID,
 		&client.CreatedDate,
+		&client.Deleted,
 	)
 
 	if err != nil {
@@ -581,8 +606,9 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 // GetClients retrieves all clients from the database
 func (s *DBService) GetClients() ([]models.Client, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, address, city, postal_code, country, vat_id, created_date
+		SELECT id, name, address, city, postal_code, country, vat_id, created_date, deleted
 		FROM clients
+		WHERE deleted = 0
 		ORDER BY name
 	`)
 	if err != nil {
@@ -593,13 +619,23 @@ func (s *DBService) GetClients() ([]models.Client, error) {
 	var clients []models.Client
 	for rows.Next() {
 		var client models.Client
-		if err := rows.Scan(&client.ID, &client.Name, &client.Address, &client.City, &client.PostalCode, &client.Country, &client.VatID, &client.CreatedDate); err != nil {
+		if err := rows.Scan(&client.ID, &client.Name, &client.Address, &client.City, &client.PostalCode, &client.Country, &client.VatID, &client.CreatedDate, &client.Deleted); err != nil {
 			return nil, err
 		}
 		clients = append(clients, client)
 	}
 
 	return clients, nil
+}
+
+// DeleteClient marks a client as deleted
+func (s *DBService) DeleteClient(id int) error {
+	_, err := s.db.Exec(`
+		UPDATE clients
+		SET deleted = 1
+		WHERE id = ?
+	`, id)
+	return err
 }
 
 // Invoice methods

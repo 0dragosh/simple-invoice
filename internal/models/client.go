@@ -12,4 +12,5 @@ type Client struct {
 	Country     string     `json:"country"`
 	VatID       string     `json:"vat_id"`
 	CreatedDate *time.Time `json:"created_date"`
+	Deleted     bool       `json:"deleted"`
 }

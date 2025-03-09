@@ -379,6 +379,23 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Handle DELETE request for a specific client
+		if r.Method == http.MethodDelete {
+			h.logger.Info("Received request to delete client with ID: %d", clientID)
+
+			if err := h.dbService.DeleteClient(clientID); err != nil {
+				h.logger.Error("Failed to delete client: %v", err)
+				http.Error(w, fmt.Sprintf("Failed to delete client: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			h.logger.Info("Successfully deleted client with ID: %d", clientID)
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"message": "Client deleted successfully"})
+			return
+		}
+
+		// Handle GET request for a specific client
 		h.logger.Info("Looking up client with ID: %d", clientID)
 		client, err := h.dbService.GetClient(clientID)
 		if err != nil {
