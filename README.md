@@ -102,3 +102,13 @@ docker build -t simple-invoice .
 ```bash
 docker run -p 8080:8080 -v $(pwd)/data:/app/data simple-invoice
 ```
+
+## Roadmap
+
+*Bug fixes. Please report bugs.*
+
+### Things that are *NOT* happening
+* users/roles/teams -- use invoiceninja/invoiceshelf
+* multiple businesses -- use invoiceninja/invoiceshelf
+* custom pdf templates -- use invoiceninja/invoiceshelf
+* security/encryption -- use authelia/authentik in front of simple-invoice OR just use invoiceninja/invoiceshelf
