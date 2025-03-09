@@ -51,8 +51,8 @@ ENV LOG_LEVEL="INFO"
 # Volume for persistent data
 VOLUME ["/app/data"]
 
-# Switch to non-root user
-USER invoice
+# Switch to non-root user using numeric ID for Kubernetes compatibility
+USER 2000
 
 # Run the application
 CMD ["./simple-invoice"]
