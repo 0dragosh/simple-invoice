@@ -109,3 +109,47 @@ The container publishing workflow:
 docker pull ghcr.io/0dragosh/simple-invoice:latest
 docker run -p 8080:8080 -v /path/to/data:/app/data ghcr.io/0dragosh/simple-invoice:latest
 ```
+
+## Releasing New Versions
+
+This project uses semantic versioning (SemVer) for releases. A release script is provided to help automate the versioning process.
+
+### Using the Release Script
+
+The `release.sh` script helps increment the version number and create a new release. It works only on the main branch and tracks versions from git tags.
+
+```bash
+./release.sh [major|minor|patch|auto]
+```
+
+Arguments:
+- `major` - Increment the major version (x.0.0) for breaking changes
+- `minor` - Increment the minor version (0.x.0) for new features
+- `patch` - Increment the patch version (0.0.x) for bug fixes
+- `auto` - Automatically determine version increment based on commit messages
+
+Examples:
+```bash
+./release.sh patch  # Increment patch version
+./release.sh auto   # Auto-determine version increment
+```
+
+### Automatic Version Determination
+
+When using the `auto` option, the script analyzes commit messages to determine the appropriate version increment:
+
+- **Major version** (x.0.0): Incremented when commits contain "BREAKING CHANGE", "feat!", "fix!", "refactor!", "perf!", or "major:"
+- **Minor version** (0.x.0): Incremented when commits contain "feat:", "feature:", or "minor:"
+- **Patch version** (0.0.x): Default for bug fixes, refactoring, and other changes
+
+### Release Process
+
+The script will:
+1. Check if you're on the main branch
+2. Ensure there are no uncommitted changes
+3. Fetch the latest tags
+4. Determine the next version number
+5. Generate release notes based on commit messages
+6. Create a git tag for the new version
+7. Push the tag to the remote repository
+8. Create a GitHub release (if GitHub CLI is installed)
