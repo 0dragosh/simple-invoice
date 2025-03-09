@@ -190,7 +190,7 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 	mux.HandleFunc("/api/clients/uk-company-lookup", handler.UKCompanyLookupHandler)
 	mux.HandleFunc("/api/invoices", handler.InvoicesAPIHandler)
 	mux.HandleFunc("/api/invoices/", handler.InvoiceByIDHandler)
-	mux.HandleFunc("/api/invoices/generate-pdf", handler.GeneratePDFHandler)
+	mux.HandleFunc("/api/invoices/generate-pdf/", handler.GeneratePDFHandler)
 	mux.HandleFunc("/api/upload/logo", handler.UploadLogoHandler)
 	mux.HandleFunc("/api/backups", handler.BackupsAPIHandler)
 	mux.HandleFunc("/api/backups/restore", handler.RestoreBackupHandler)

@@ -34,7 +34,7 @@ func (h *AppHandler) BackupsHandler(w http.ResponseWriter, r *http.Request) {
 		"BackupCron": backupCron,
 	}
 
-	h.renderTemplate(w, "backups.html", data)
+	h.renderTemplate(w, "backups", data)
 }
 
 // BackupsAPIHandler handles backup API requests
