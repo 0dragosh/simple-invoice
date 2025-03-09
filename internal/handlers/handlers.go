@@ -96,6 +96,21 @@ func formatFileSize(size int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
 }
 
+// formatCurrency formats a float as a currency value with 2 decimal places
+func formatCurrency(amount float64) string {
+	return fmt.Sprintf("%.2f", amount)
+}
+
+// currencySymbol returns the symbol for a given currency code
+func currencySymbol(currency string) string {
+	return services.FormatCurrencySymbol(currency)
+}
+
+// add adds two float64 values
+func add(a, b float64) float64 {
+	return a + b
+}
+
 // parseTemplates parses all HTML templates
 func parseTemplates(logger *services.Logger) (map[string]*template.Template, error) {
 	templates := make(map[string]*template.Template)
@@ -105,6 +120,9 @@ func parseTemplates(logger *services.Logger) (map[string]*template.Template, err
 		"formatDate":     formatDate,
 		"formatMoney":    formatMoney,
 		"formatFileSize": formatFileSize,
+		"formatCurrency": formatCurrency,
+		"currencySymbol": currencySymbol,
+		"add":            add,
 	}
 
 	// Parse base template
