@@ -55,6 +55,6 @@ VOLUME ["/app/data"]
 USER 2000
 
 # Run the application
-CMD ["./simple-invoice"]
+CMD ["./server"]
 
 LABEL org.opencontainers.image.source=https://github.com/0dragosh/simple-invoice
