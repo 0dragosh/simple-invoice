@@ -1010,3 +1010,8 @@ func RemoveDatabase(dataDir string, logger *Logger) error {
 	logger.Info("Database files removed successfully")
 	return nil
 }
+
+// GetDB returns the database connection
+func (s *DBService) GetDB() *sql.DB {
+	return s.db
+}
