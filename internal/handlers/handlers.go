@@ -113,6 +113,7 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 
 	// API endpoints - register more specific routes first
 	mux.HandleFunc("/api/clients/vat-lookup", handler.VatLookupHandler)
+	mux.HandleFunc("/api/clients/uk-company-lookup", handler.UKCompanyLookupHandler)
 	mux.HandleFunc("/api/invoices/generate-pdf/", handler.GeneratePDFHandler)
 	mux.HandleFunc("/api/invoices/", handler.InvoiceByIDHandler)
 
@@ -410,6 +411,25 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 			// Attempt to validate the VAT ID
 			validatedClient, err := h.vatService.ValidateVatID(client.VatID)
 			if err != nil {
+				// Check if it's a UK VAT ID (which can't be validated automatically)
+				if strings.HasPrefix(err.Error(), "UK_VAT_MANUAL_ENTRY:") {
+					h.logger.Warn("UK VAT ID detected, skipping validation: %s", client.VatID)
+					// Allow saving UK clients without validation
+					// Return a special warning to the client
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					json.NewEncoder(w).Encode(map[string]interface{}{
+						"warning": "UK VAT IDs cannot be automatically validated. The client will be saved with the provided details.",
+						"client":  client,
+					})
+
+					// Save the client
+					if err := h.dbService.SaveClient(&client); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+					}
+					return
+				}
+
 				// Check if it's a service unavailability error
 				if strings.Contains(err.Error(), "Service Unavailable") ||
 					strings.Contains(err.Error(), "unavailable") ||
@@ -475,42 +495,81 @@ func (h *AppHandler) VatLookupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vatID := r.URL.Query().Get("vat_id")
-	companyName := r.URL.Query().Get("company_name")
-	companyNumber := r.URL.Query().Get("company_number")
 
-	if vatID == "" && companyName == "" && companyNumber == "" {
-		h.logger.Warn("Either VAT ID, company name, or company number is required")
-		http.Error(w, "Either VAT ID, company name, or company number is required", http.StatusBadRequest)
+	if vatID == "" {
+		h.logger.Warn("VAT ID is required")
+		http.Error(w, "VAT ID is required", http.StatusBadRequest)
 		return
 	}
 
 	var client *models.Client
 	var err error
 
-	if vatID != "" {
-		h.logger.Info("Looking up VAT ID: %s", vatID)
-		client, err = h.vatService.ValidateVatID(vatID)
-	} else if companyNumber != "" {
-		h.logger.Info("Looking up UK company by number: %s", companyNumber)
-		client, err = h.vatService.LookupUKCompany(companyNumber)
-	} else if companyName != "" {
-		// For company name lookup, we only support UK companies
-		h.logger.Info("Looking up UK company by name: %s", companyName)
-		// Remove any GB prefix if present
-		if strings.HasPrefix(companyName, "GB") {
-			companyName = companyName[2:]
-		}
-		client, err = h.vatService.LookupUKCompany(companyName)
-	}
+	h.logger.Info("Looking up VAT ID: %s", vatID)
+	client, err = h.vatService.ValidateVatID(vatID)
 
 	if err != nil {
-		h.logger.Error("VAT/Company lookup failed: %v", err)
+		h.logger.Error("VAT lookup failed: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	h.logger.Info("Successfully looked up client: %s", client.Name)
 	json.NewEncoder(w).Encode(client)
+}
+
+// UKCompanyLookupHandler handles UK company lookup requests
+func (h *AppHandler) UKCompanyLookupHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodGet {
+		h.logger.Warn("Method not allowed: %s", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	companyName := r.URL.Query().Get("name")
+	companyNumber := r.URL.Query().Get("number")
+
+	if companyName == "" && companyNumber == "" {
+		h.logger.Warn("Either company name or number is required")
+		http.Error(w, "Either company name or number is required", http.StatusBadRequest)
+		return
+	}
+
+	var clients []*models.Client
+	var client *models.Client
+	var err error
+
+	if companyNumber != "" {
+		// Lookup by company number
+		h.logger.Info("Looking up UK company by number: %s", companyNumber)
+		client, err = h.vatService.LookupUKCompanyByNumber(companyNumber)
+		if err != nil {
+			h.logger.Error("UK company lookup by number failed: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		clients = []*models.Client{client}
+	} else {
+		// Lookup by company name
+		h.logger.Info("Looking up UK company by name: %s", companyName)
+		clients, err = h.vatService.LookupUKCompany(companyName)
+		if err != nil {
+			h.logger.Error("UK company lookup by name failed: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if len(clients) == 0 {
+		h.logger.Warn("No UK companies found")
+		http.Error(w, "No UK companies found", http.StatusNotFound)
+		return
+	}
+
+	h.logger.Info("Successfully looked up %d UK companies", len(clients))
+	json.NewEncoder(w).Encode(clients)
 }
 
 // InvoicesAPIHandler handles invoices API requests
