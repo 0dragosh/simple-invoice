@@ -34,6 +34,7 @@
                         <td>{{.Country}}</td>
                         <td>
                             <button class="btn btn-sm btn-primary edit-client" data-id="{{.ID}}">Edit</button>
+                            <button class="btn btn-sm btn-danger delete-client" data-id="{{.ID}}" data-name="{{.Name}}">Delete</button>
                         </td>
                     </tr>
                     {{else}}
@@ -151,6 +152,18 @@ document.addEventListener('DOMContentLoaded', function() {
         button.addEventListener('click', function() {
             const clientId = this.getAttribute('data-id');
             fetchClient(clientId);
+        });
+    });
+    
+    // Delete client buttons
+    document.querySelectorAll('.delete-client').forEach(button => {
+        button.addEventListener('click', function() {
+            const clientId = this.getAttribute('data-id');
+            const clientName = this.getAttribute('data-name');
+            
+            if (confirm(`Are you sure you want to delete client "${clientName}"? This action cannot be undone.`)) {
+                deleteClient(clientId);
+            }
         });
     });
     
@@ -382,6 +395,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error fetching client:', error);
                 alert('Error fetching client: ' + error.message);
             });
+    }
+    
+    // Function to delete a client
+    function deleteClient(clientId) {
+        fetch(`/api/clients/${clientId}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.message || 'Failed to delete client');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            alert('Client deleted successfully');
+            window.location.reload();
+        })
+        .catch(error => {
+            console.error('Error deleting client:', error);
+            alert('Error deleting client: ' + error.message);
+        });
     }
 });
 </script>
