@@ -39,6 +39,12 @@ func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error)
 		return nil, fmt.Errorf("failed to create images directory: %w", err)
 	}
 
+	// Create pdfs directory
+	pdfsDir := filepath.Join(dataDir, "pdfs")
+	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create pdfs directory: %w", err)
+	}
+
 	logger.Info("Initializing application handler")
 
 	// Initialize services
@@ -127,6 +133,10 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 	// Serve static files from data directory
 	fs := http.FileServer(http.Dir(dataDir))
 	mux.Handle("/data/", http.StripPrefix("/data/", fs))
+
+	// Log the data directory path for debugging
+	logger.Info("Serving static files from: %s", dataDir)
+	logger.Info("PDF files will be available at: %s/pdfs/", dataDir)
 
 	logger.Info("All handlers registered successfully")
 
@@ -706,49 +716,95 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 // GeneratePDFHandler generates a PDF invoice
 func (h *AppHandler) GeneratePDFHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.logger.Warn("Method not allowed for PDF generation: %s", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	idStr := r.URL.Path[len("/api/invoices/generate-pdf/"):]
+	h.logger.Debug("PDF generation requested for invoice ID: %s", idStr)
+
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		h.logger.Error("Invalid invoice ID for PDF generation: %s - %v", idStr, err)
 		http.Error(w, "Invalid invoice ID", http.StatusBadRequest)
 		return
 	}
 
+	h.logger.Info("Generating PDF for invoice ID: %d", id)
+
 	invoice, items, err := h.dbService.GetInvoice(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to get invoice for PDF generation: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get invoice: %v", err), http.StatusInternalServerError)
 		return
 	}
+	h.logger.Debug("Retrieved invoice #%s with %d items", invoice.InvoiceNumber, len(items))
 
 	business, err := h.dbService.GetBusiness(invoice.BusinessID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to get business for PDF generation: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get business details: %v", err), http.StatusInternalServerError)
 		return
 	}
+	h.logger.Debug("Retrieved business details: %s", business.Name)
 
 	client, err := h.dbService.GetClient(invoice.ClientID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to get client for PDF generation: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get client details: %v", err), http.StatusInternalServerError)
 		return
 	}
+	h.logger.Debug("Retrieved client details: %s", client.Name)
 
+	// Ensure the pdfs directory exists
+	pdfsDir := filepath.Join(h.dataDir, "pdfs")
+	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+		h.logger.Error("Failed to create pdfs directory: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create pdfs directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+	h.logger.Debug("Ensured pdfs directory exists: %s", pdfsDir)
+
+	h.logger.Debug("Calling PDF service to generate invoice PDF")
 	pdfPath, err := h.pdfService.GenerateInvoice(invoice, business, client, items)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to generate PDF: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to generate PDF: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Extract just the filename from the full path
 	pdfFilename := filepath.Base(pdfPath)
+	h.logger.Info("Successfully generated PDF: %s at path: %s", pdfFilename, pdfPath)
+
+	// Verify the file exists and is accessible
+	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
+		h.logger.Error("Generated PDF file does not exist: %s", pdfPath)
+		http.Error(w, "Generated PDF file not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Check file permissions
+	fileInfo, err := os.Stat(pdfPath)
+	if err != nil {
+		h.logger.Error("Error checking PDF file: %v", err)
+	} else {
+		h.logger.Debug("PDF file permissions: %v, size: %d bytes", fileInfo.Mode(), fileInfo.Size())
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response := map[string]string{
 		"filename": pdfFilename,
 		"url":      "/data/pdfs/" + pdfFilename,
-	})
+	}
+	h.logger.Debug("Sending PDF response: %v", response)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode PDF response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 }
 
 // UploadLogoHandler handles logo uploads

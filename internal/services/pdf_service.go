@@ -424,10 +424,16 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	pdfFileName := fmt.Sprintf("invoice_%s_%s.pdf", invoice.InvoiceNumber, time.Now().Format("20060102"))
 	pdfPath := filepath.Join(s.dataDir, "pdfs", pdfFileName)
 
+	// Ensure the pdfs directory exists
+	pdfsDir := filepath.Join(s.dataDir, "pdfs")
+	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create pdfs directory: %w", err)
+	}
+
 	// Save PDF to file
 	err := pdf.OutputFileAndClose(pdfPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to save PDF file: %w", err)
 	}
 
 	return pdfPath, nil
