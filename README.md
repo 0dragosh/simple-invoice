@@ -12,6 +12,7 @@ A simple invoicing application for consultants built with Go. All invoice applic
 - Auto-fetch client details from VAT ID (VIES/public databases)
 - Auto-fetch UK business details from company name or VAT ID
 - Currency hardcoded to Euros
+- Create and manage invoices
 
 ## Setup
 
@@ -34,9 +35,7 @@ A simple invoicing application for consultants built with Go. All invoice applic
 
 - `PORT`: The port to run the server on (default: 8080)
 - `DATA_DIR`: The directory to store data in (default: /app/data)
-- `COMPANIES_HOUSE_API_KEY`: API key for Companies House (optional, for UK company lookups)
-- `VIES_IDENTIFIER`: VIES API identifier (optional, for enhanced EU VAT validation)
-- `VIES_KEY`: VIES API key (optional, for enhanced EU VAT validation)
+- `COMPANIES_HOUSE_API_KEY`: Companies House API key (optional, required only for UK company lookups)
 - `LOG_LEVEL`: Logging level (DEBUG, INFO, WARN, ERROR, FATAL) (default: INFO)
 
 ### Data Directory Structure
@@ -59,31 +58,15 @@ All persistent data is stored in the `/app/data` directory:
 
 The application supports VAT ID validation and company information retrieval for EU and UK companies:
 
-1. **EU VAT Validation (VIES)**: For enhanced EU VAT validation, you can register for VIES API credentials:
-   - Register at [VIES API Portal](https://viesapi.eu/portal/register.php)
-   - Set the `VIES_IDENTIFIER` and `VIES_KEY` environment variables:
-     ```
-     export VIES_IDENTIFIER=your_identifier
-     export VIES_KEY=your_key
-     ```
-     or in docker-compose.yml:
-     ```yaml
-     environment:
-       - VIES_IDENTIFIER=your_identifier
-       - VIES_KEY=your_key
-     ```
+1. **EU VAT Validation (VIES)**: The application uses the official VIES SOAP API from the European Commission for EU VAT validation.
 
-2. **UK Company Lookup**: To enable UK company lookup by name, you need to:
-   - Obtain a Companies House API key from [Companies House API](https://developer.company-information.service.gov.uk/)
-   - Set the `COMPANIES_HOUSE_API_KEY` environment variable:
-     ```
-     export COMPANIES_HOUSE_API_KEY=your_api_key
-     ```
-     or in docker-compose.yml:
-     ```yaml
-     environment:
-       - COMPANIES_HOUSE_API_KEY=your_api_key
-     ```
+2. **UK Company Lookup**: For UK companies, the application uses the Companies House API to look up company details by name or company number. Note that for UK companies, the VAT ID needs to be entered manually as it cannot be automatically validated.
+
+   - To use the Companies House API, you need to register for an API key at [Companies House API](https://developer.company-information.service.gov.uk/)
+   - Set the `COMPANIES_HOUSE_API_KEY` environment variable with your API key
+   - Without this API key, UK company lookups will not work
+
+Note: UK VAT numbers cannot be automatically validated through the application. Users will need to manually enter the VAT ID for UK companies.
 
 ## Development
 
@@ -125,4 +108,4 @@ The container publishing workflow:
 ```bash
 docker pull ghcr.io/0dragosh/simple-invoice:latest
 docker run -p 8080:8080 -v /path/to/data:/app/data ghcr.io/0dragosh/simple-invoice:latest
-``` 
+```

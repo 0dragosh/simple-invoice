@@ -16,7 +16,6 @@
                     <tr>
                         <th>Name</th>
                         <th>VAT ID</th>
-                        <th>Company Number</th>
                         <th>Address</th>
                         <th>City</th>
                         <th>Postal Code</th>
@@ -29,7 +28,6 @@
                     <tr>
                         <td>{{.Name}}</td>
                         <td>{{.VatID}}</td>
-                        <td>{{.CompanyNumber}}</td>
                         <td>{{.Address}}</td>
                         <td>{{.City}}</td>
                         <td>{{.PostalCode}}</td>
@@ -40,7 +38,7 @@
                     </tr>
                     {{else}}
                     <tr>
-                        <td colspan="8" class="text-center">No clients found</td>
+                        <td colspan="7" class="text-center">No clients found</td>
                     </tr>
                     {{end}}
                 </tbody>
@@ -70,26 +68,12 @@
                             <div class="form-text">Enter VAT ID to automatically fetch client details</div>
                         </div>
                         <div class="col-md-6">
-                            <label for="companyNumber" class="form-label">Company Number</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="companyNumber" name="companyNumber" placeholder="e.g. 12345678">
-                                <button class="btn btn-outline-secondary" type="button" id="lookupCompanyNumberBtn">Lookup</button>
-                            </div>
-                            <div class="form-text">Company registration number (optional)</div>
-                        </div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="companyName" class="form-label">UK Company Name</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" id="companyName" name="companyName">
-                                <button class="btn btn-outline-secondary" type="button" id="lookupCompanyBtn">Lookup</button>
-                            </div>
-                            <div class="form-text">For UK companies - enter company name to lookup</div>
-                        </div>
-                        <div class="col-md-6">
                             <label for="name" class="form-label">Client Name</label>
-                            <input type="text" class="form-control" id="name" name="name" required>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="name" name="name" required>
+                                <button class="btn btn-outline-secondary" type="button" id="lookupUKCompanyBtn">UK Lookup</button>
+                            </div>
+                            <div class="form-text">For UK companies, enter name to search Companies House</div>
                         </div>
                     </div>
                     <div class="row mb-3">
@@ -122,13 +106,44 @@
     </div>
 </div>
 
+<!-- UK Company Results Modal -->
+<div class="modal fade" id="ukCompanyResultsModal" tabindex="-1" aria-labelledby="ukCompanyResultsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="ukCompanyResultsModalLabel">UK Company Search Results</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Company Name</th>
+                                <th>Company Number</th>
+                                <th>Address</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ukCompanyResultsTableBody">
+                            <!-- Results will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const clientForm = document.getElementById('clientForm');
     const saveClientBtn = document.getElementById('saveClientBtn');
     const lookupVatBtn = document.getElementById('lookupVatBtn');
-    const lookupCompanyBtn = document.getElementById('lookupCompanyBtn');
-    const lookupCompanyNumberBtn = document.getElementById('lookupCompanyNumberBtn');
+    const lookupUKCompanyBtn = document.getElementById('lookupUKCompanyBtn');
     const clientModal = new bootstrap.Modal(document.getElementById('addClientModal'));
     
     // Edit client buttons
@@ -160,7 +175,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('city').value = data.city || '';
                 document.getElementById('postalCode').value = data.postal_code || '';
                 document.getElementById('country').value = data.country || '';
-                document.getElementById('companyNumber').value = data.company_number || '';
             })
             .catch(error => {
                 console.error('Error looking up VAT ID:', error);
@@ -168,31 +182,34 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
     
-    // Company name lookup (UK only)
-    lookupCompanyBtn.addEventListener('click', function() {
-        const companyName = document.getElementById('companyName').value;
-        if (!companyName) {
-            alert('Please enter a company name');
+    // UK company lookup
+    lookupUKCompanyBtn.addEventListener('click', function() {
+        const name = document.getElementById('name').value;
+        if (!name) {
+            alert('Please enter a client name');
             return;
         }
         
-        fetch(`/api/clients/vat-lookup?company_name=${encodeURIComponent(companyName)}`)
+        fetch(`/api/clients/uk-company-lookup?name=${encodeURIComponent(name)}`)
             .then(response => {
                 if (!response.ok) {
-                    return response.text().then(text => {
-                        throw new Error(text || 'Company lookup failed');
-                    });
+                    throw new Error('Company lookup failed');
                 }
                 return response.json();
             })
             .then(data => {
-                document.getElementById('name').value = data.name || '';
-                document.getElementById('address').value = data.address || '';
-                document.getElementById('city').value = data.city || '';
-                document.getElementById('postalCode').value = data.postal_code || '';
-                document.getElementById('country').value = data.country || '';
-                document.getElementById('vatId').value = data.vat_id || '';
-                document.getElementById('companyNumber').value = data.company_number || '';
+                // Check if we got multiple results
+                if (Array.isArray(data) && data.length > 0) {
+                    if (data.length === 1) {
+                        // If only one result, use it directly
+                        selectUKCompany(data[0]);
+                    } else {
+                        // If multiple results, show the selection modal
+                        showUKCompanyResults(data);
+                    }
+                } else {
+                    alert('No companies found with that name');
+                }
             })
             .catch(error => {
                 console.error('Error looking up company:', error);
@@ -200,65 +217,98 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
     
-    // Company number lookup
-    lookupCompanyNumberBtn.addEventListener('click', function() {
-        const companyNumber = document.getElementById('companyNumber').value;
-        if (!companyNumber) {
-            alert('Please enter a company number');
-            return;
-        }
+    // Function to show UK company results in the modal
+    function showUKCompanyResults(companies) {
+        const tableBody = document.getElementById('ukCompanyResultsTableBody');
+        tableBody.innerHTML = '';
         
-        fetch(`/api/clients/vat-lookup?company_number=${encodeURIComponent(companyNumber)}`)
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => {
-                        throw new Error(text || 'Company lookup failed');
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                document.getElementById('name').value = data.name || '';
-                document.getElementById('address').value = data.address || '';
-                document.getElementById('city').value = data.city || '';
-                document.getElementById('postalCode').value = data.postal_code || '';
-                document.getElementById('country').value = data.country || '';
-                document.getElementById('vatId').value = data.vat_id || '';
-                document.getElementById('companyNumber').value = data.company_number || '';
-            })
-            .catch(error => {
-                console.error('Error looking up company:', error);
-                alert('Error looking up company: ' + error.message);
+        companies.forEach(company => {
+            const row = document.createElement('tr');
+            
+            // Company name
+            const nameCell = document.createElement('td');
+            nameCell.textContent = company.name;
+            row.appendChild(nameCell);
+            
+            // Company number
+            const numberCell = document.createElement('td');
+            numberCell.textContent = company.company_number || 'N/A';
+            row.appendChild(numberCell);
+            
+            // Address
+            const addressCell = document.createElement('td');
+            addressCell.textContent = company.address || 'N/A';
+            row.appendChild(addressCell);
+            
+            // Action button
+            const actionCell = document.createElement('td');
+            const selectButton = document.createElement('button');
+            selectButton.className = 'btn btn-sm btn-primary';
+            selectButton.textContent = 'Select';
+            selectButton.addEventListener('click', function() {
+                selectUKCompany(company);
+                const modal = bootstrap.Modal.getInstance(document.getElementById('ukCompanyResultsModal'));
+                modal.hide();
             });
-    });
+            actionCell.appendChild(selectButton);
+            row.appendChild(actionCell);
+            
+            tableBody.appendChild(row);
+        });
+        
+        // Show the modal
+        const ukCompanyResultsModal = new bootstrap.Modal(document.getElementById('ukCompanyResultsModal'));
+        ukCompanyResultsModal.show();
+    }
+    
+    // Function to select a UK company and populate the form
+    function selectUKCompany(company) {
+        document.getElementById('name').value = company.name || '';
+        document.getElementById('address').value = company.address || '';
+        document.getElementById('city').value = company.city || '';
+        document.getElementById('postalCode').value = company.postal_code || '';
+        document.getElementById('country').value = company.country || '';
+    }
     
     // Save client
     saveClientBtn.addEventListener('click', function() {
-        saveClient(false);
-    });
-    
-    // Function to save client with option to skip validation
-    function saveClient(skipValidation) {
         if (!clientForm.checkValidity()) {
             clientForm.reportValidity();
             return;
         }
         
+        const clientId = document.getElementById('clientId').value;
         const client = {
-            id: parseInt(document.getElementById('clientId').value) || 0,
+            id: parseInt(clientId) || 0,
             name: document.getElementById('name').value,
             address: document.getElementById('address').value,
             city: document.getElementById('city').value,
             postal_code: document.getElementById('postalCode').value,
             country: document.getElementById('country').value,
-            vat_id: document.getElementById('vatId').value,
-            company_number: document.getElementById('companyNumber').value
+            vat_id: document.getElementById('vatId').value
         };
         
-        // Determine the URL based on whether to skip validation
-        const url = skipValidation ? '/api/clients?skip_vat_validation=true' : '/api/clients';
+        // Check if it's a UK VAT ID
+        const vatId = client.vat_id.toUpperCase().trim();
+        if (vatId.startsWith('GB')) {
+            // Show a warning message for UK VAT IDs
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'alert alert-warning mt-3';
+            warningDiv.innerHTML = '<strong>Note:</strong> UK VAT IDs cannot be automatically validated. The client will be saved with the provided details.';
+            
+            // Add the warning to the modal
+            const modalBody = document.querySelector('#addClientModal .modal-body');
+            
+            // Remove any existing warning
+            const existingWarning = modalBody.querySelector('.alert-warning');
+            if (existingWarning) {
+                existingWarning.remove();
+            }
+            
+            modalBody.appendChild(warningDiv);
+        }
         
-        fetch(url, {
+        fetch('/api/clients', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -268,89 +318,63 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => {
             if (!response.ok) {
                 return response.json().then(data => {
-                    // If it's a JSON response, use the structured error
-                    if (data && data.error) {
-                        throw { 
-                            status: response.status, 
-                            error: data.error, 
-                            message: data.message || response.statusText 
-                        };
-                    }
-                    // Otherwise fall back to text
-                    throw new Error(response.statusText);
-                }).catch(e => {
-                    // If JSON parsing fails, try to get text
-                    if (e instanceof SyntaxError) {
-                        return response.text().then(text => {
-                            throw new Error(text || response.statusText);
-                        });
-                    }
-                    throw e;
+                    throw new Error(data.message || 'Failed to save client');
                 });
             }
             return response.json();
         })
         .then(data => {
-            console.log('Client saved:', data);
-            alert('Client saved successfully!');
-            clientModal.hide();
-            window.location.reload();
+            // Check if there's a warning message
+            if (data.warning) {
+                // Show the warning message
+                const warningDiv = document.createElement('div');
+                warningDiv.className = 'alert alert-warning mt-3';
+                warningDiv.textContent = data.warning;
+                
+                // Add the warning to the modal
+                const modalBody = document.querySelector('#addClientModal .modal-body');
+                
+                // Remove any existing warning
+                const existingWarning = modalBody.querySelector('.alert-warning');
+                if (existingWarning) {
+                    existingWarning.remove();
+                }
+                
+                modalBody.appendChild(warningDiv);
+                
+                // Reload the page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                console.log('Client saved:', data);
+                window.location.reload();
+            }
         })
         .catch(error => {
             console.error('Error saving client:', error);
-            
-            // Check if it's a VAT service unavailability error
-            if (error.error === 'VAT_SERVICE_UNAVAILABLE') {
-                const confirmSkip = confirm(
-                    'The VAT validation service is currently unavailable:\n\n' + 
-                    error.message + '\n\n' + 
-                    'Would you like to save the client without VAT validation?'
-                );
-                
-                if (confirmSkip) {
-                    // Try again with validation skipped
-                    saveClient(true);
-                }
-                return;
-            }
-            
-            // Check if the error is related to VAT ID validation
-            const errorMessage = error.message || '';
-            if (errorMessage.includes('Invalid VAT ID')) {
-                alert('Error: ' + errorMessage + '\n\nPlease verify the VAT ID is correct or use the VAT ID lookup button to validate it.');
-                document.getElementById('vatId').focus();
-            } else {
-                alert('Error saving client: ' + errorMessage);
-            }
+            alert('Error saving client: ' + error.message);
         });
-    }
+    });
     
     // Fetch client for editing
-    function fetchClient(id) {
-        console.log(`Attempting to fetch client with ID: ${id}`);
-        fetch(`/api/clients/${id}`)
+    function fetchClient(clientId) {
+        fetch(`/api/clients/${clientId}`)
             .then(response => {
                 if (!response.ok) {
-                    console.error(`Server returned status: ${response.status} ${response.statusText}`);
-                    return response.text().then(text => {
-                        throw new Error(`Failed to fetch client (${response.status}): ${text || response.statusText}`);
-                    });
+                    throw new Error('Failed to fetch client');
                 }
                 return response.json();
             })
-            .then(data => {
-                console.log(`Successfully fetched client: ${data.name}`);
-                document.getElementById('clientId').value = data.id;
-                document.getElementById('name').value = data.name;
-                document.getElementById('address').value = data.address;
-                document.getElementById('city').value = data.city;
-                document.getElementById('postalCode').value = data.postal_code;
-                document.getElementById('country').value = data.country;
-                document.getElementById('vatId').value = data.vat_id;
-                document.getElementById('companyNumber').value = data.company_number;
-                document.getElementById('companyName').value = '';
+            .then(client => {
+                document.getElementById('clientId').value = client.id;
+                document.getElementById('name').value = client.name;
+                document.getElementById('address').value = client.address;
+                document.getElementById('city').value = client.city;
+                document.getElementById('postalCode').value = client.postal_code;
+                document.getElementById('country').value = client.country;
+                document.getElementById('vatId').value = client.vat_id;
                 
-                document.getElementById('addClientModalLabel').textContent = 'Edit Client';
                 clientModal.show();
             })
             .catch(error => {
@@ -358,13 +382,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Error fetching client: ' + error.message);
             });
     }
-    
-    // Reset form when modal is closed
-    document.getElementById('addClientModal').addEventListener('hidden.bs.modal', function() {
-        clientForm.reset();
-        document.getElementById('clientId').value = '0';
-        document.getElementById('addClientModalLabel').textContent = 'Add Client';
-    });
 });
 </script>
 {{end}} 

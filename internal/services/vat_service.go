@@ -1,13 +1,9 @@
 package services
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,22 +17,29 @@ import (
 // VatService provides methods for VAT ID validation and business info retrieval
 type VatService struct {
 	companiesHouseAPIKey string
-	viesIdentifier       string
-	viesKey              string
 	logger               *Logger
 }
 
-// NewVatService creates a new VAT service
+// NewVatService creates a new VatService
 func NewVatService(logger *Logger) *VatService {
-	// Get API keys from environment variables
+	// Get API key from environment variable
 	companiesHouseAPIKey := os.Getenv("COMPANIES_HOUSE_API_KEY")
-	viesIdentifier := os.Getenv("VIES_IDENTIFIER")
-	viesKey := os.Getenv("VIES_KEY")
+
+	// Log the API key status (masked for security)
+	if companiesHouseAPIKey != "" {
+		maskedKey := ""
+		if len(companiesHouseAPIKey) >= 8 {
+			maskedKey = companiesHouseAPIKey[:4] + "..." + companiesHouseAPIKey[len(companiesHouseAPIKey)-4:]
+		} else if len(companiesHouseAPIKey) > 0 {
+			maskedKey = "[too short to mask]"
+		}
+		logger.Debug("Companies House API Key loaded: %s (length: %d)", maskedKey, len(companiesHouseAPIKey))
+	} else {
+		logger.Warn("Companies House API Key not set - UK company lookups will not work")
+	}
 
 	return &VatService{
 		companiesHouseAPIKey: companiesHouseAPIKey,
-		viesIdentifier:       viesIdentifier,
-		viesKey:              viesKey,
 		logger:               logger,
 	}
 }
@@ -46,39 +49,30 @@ func (s *VatService) ValidateVatID(vatID string) (*models.Client, error) {
 	// Clean the VAT ID (remove spaces, make uppercase)
 	vatID = strings.ToUpper(strings.ReplaceAll(vatID, " ", ""))
 
-	s.logger.Info("Starting VAT ID validation for: %s", vatID)
 	s.logger.Debug("VAT Validation - Input: Original VAT ID = %s", vatID)
 
-	// Extract country code and number
+	// Check if the VAT ID is valid (should be at least 3 characters)
 	if len(vatID) < 3 {
-		s.logger.Error("VAT Validation - Error: Invalid VAT ID format (too short)")
 		return nil, fmt.Errorf("invalid VAT ID format")
 	}
 
+	// Extract the country code and number
 	countryCode := vatID[:2]
 	number := vatID[2:]
 
 	s.logger.Debug("VAT Validation - Parsed: Country Code = %s, Number = %s", countryCode, number)
 
-	// Only use VIES API for validation - no fallbacks
-	if s.viesIdentifier != "" && s.viesKey != "" {
-		s.logger.Info("Using VIES API for VAT validation")
-		s.logger.Debug("VAT Validation - Config: Using VIES API with identifier = %s", s.viesIdentifier)
-
-		client, err := s.fetchFromVIES(countryCode, number)
-		if err != nil {
-			s.logger.Error("VIES API validation failed: %v", err)
-			s.logger.Debug("VAT Validation - Error: Full error details = %v", err)
-			return nil, fmt.Errorf("VAT validation failed: %w", err)
-		}
-
-		s.logger.Debug("VAT Validation - Success: Validated VAT ID %s for %s", vatID, client.Name)
-		return client, nil
+	// Validate based on country code
+	if isEUCountry(countryCode) {
+		s.logger.Info("Using EU VIES API for VAT validation")
+		return s.fetchFromVIES(countryCode, number)
+	} else if countryCode == "GB" {
+		s.logger.Info("UK VAT validation requires manual entry - VAT ID cannot be automatically validated")
+		// Return a special error for UK VAT IDs that can be handled differently
+		return nil, fmt.Errorf("UK_VAT_MANUAL_ENTRY: UK VAT validation requires manual entry - please enter company details manually or use Companies House lookup")
+	} else {
+		return nil, fmt.Errorf("unsupported country code: %s", countryCode)
 	}
-
-	// If no VIES credentials, return an error
-	s.logger.Error("VAT Validation - Error: VIES API credentials not configured")
-	return nil, fmt.Errorf("VIES API credentials not configured")
 }
 
 // parseAddress parses a raw address string into address, city, and postal code
@@ -307,6 +301,71 @@ func parseAddressForCountry(rawAddress string, countryCode string) (address, cit
 	// If we couldn't extract a postal code, try country-specific extraction
 	if postalCode == "" {
 		switch countryCode {
+		case "GB", "UK":
+			// UK postal code pattern: 1-2 letters, 1-2 digits, optional space, 1 digit, 2 letters
+			// Examples: SW1A 1AA, M1 1AA, B1 1AA, etc.
+			re := regexp.MustCompile(`\b[A-Z]{1,2}[0-9][0-9A-Z]?\s*[0-9][A-Z]{2}\b`)
+			if match := re.FindString(rawAddress); match != "" {
+				postalCode = match
+				// Normalize the postal code format (ensure there's a space in the right place)
+				postalCode = normalizePostalCode(postalCode, countryCode)
+			}
+
+			// Try to extract city for UK addresses
+			// Common UK cities
+			ukCities := []string{
+				"London", "Manchester", "Birmingham", "Liverpool", "Leeds", "Glasgow", "Edinburgh",
+				"Bristol", "Sheffield", "Newcastle", "Nottingham", "Cardiff", "Belfast", "Leicester",
+				"Coventry", "Bradford", "Stoke-on-Trent", "Wolverhampton", "Plymouth", "Derby",
+				"Southampton", "Brighton", "Hull", "Reading", "Preston", "York", "Swansea",
+				"Aberdeen", "Cambridge", "Exeter", "Oxford", "Sunderland", "Norwich", "Bath",
+				"Portsmouth", "Bournemouth", "Middlesbrough", "Peterborough", "Blackpool",
+				"Dundee", "Gloucester", "Huddersfield", "Ipswich", "Luton", "Northampton",
+				"Poole", "Stockport", "Swindon", "Watford", "Wigan", "Blackburn", "Bolton",
+				"Colchester", "Eastbourne", "Worthing", "Basingstoke", "Cheltenham", "Crawley",
+				"Dudley", "Gillingham", "Hartlepool", "Rochdale", "Southport", "Woking",
+				"Birkenhead", "Grimsby", "Hastings", "Maidstone", "Oldham", "Warrington",
+				"Carlisle", "Darlington", "Guildford", "Harrogate", "Lincoln", "Stevenage",
+				"Walsall", "Burnley", "Chatham", "Halifax", "Slough", "Southend-on-Sea",
+				"Stockton-on-Tees", "Wakefield", "Chester", "Chesterfield", "Doncaster",
+				"Mansfield", "Milton Keynes", "Rotherham", "Telford", "Weston-super-Mare",
+				"Barnsley", "Bedford", "Harlow", "Hemel Hempstead", "Redditch", "Scarborough",
+				"Scunthorpe", "Shrewsbury", "Weymouth", "Worcester", "Ashford", "Bognor Regis",
+				"Canterbury", "Folkestone", "Hereford", "Kidderminster", "Leamington Spa",
+				"Loughborough", "Nuneaton", "Rugby", "Stafford", "Taunton", "Torquay",
+				"Wellingborough", "Bangor", "Barry", "Bridgend", "Caerphilly", "Llanelli",
+				"Merthyr Tydfil", "Newport", "Pontypool", "Port Talbot", "Rhondda", "Wrexham",
+				"Ayr", "Cumbernauld", "Dumfries", "East Kilbride", "Falkirk", "Greenock",
+				"Hamilton", "Inverness", "Kilmarnock", "Kirkcaldy", "Livingston", "Motherwell",
+				"Paisley", "Perth", "Stirling", "Armagh", "Bangor", "Coleraine", "Craigavon",
+				"Derry", "Lisburn", "Newry", "Newtownabbey", "Omagh", "Didsbury",
+			}
+
+			// Check if any of the common UK cities are in the address
+			for _, ukCity := range ukCities {
+				if strings.Contains(rawAddress, ukCity) {
+					city = ukCity
+					break
+				}
+			}
+
+			// If we found a city and postal code, remove them from the address
+			if city != "" && postalCode != "" {
+				// Remove the city and postal code from the address
+				addressWithoutCity := strings.Replace(rawAddress, city, "", -1)
+				addressWithoutPostal := strings.Replace(addressWithoutCity, postalCode, "", -1)
+
+				// Clean up the address
+				address = strings.TrimSpace(addressWithoutPostal)
+				address = strings.Trim(address, ",")
+				address = strings.TrimSpace(address)
+
+				// Remove any trailing commas
+				for strings.HasSuffix(address, ",") {
+					address = strings.TrimSuffix(address, ",")
+					address = strings.TrimSpace(address)
+				}
+			}
 		case "CZ", "SE":
 			// Look for patterns like "123 45" or "12345"
 			re := regexp.MustCompile(`\b\d{3}\s*\d{2}\b`)
@@ -337,55 +396,47 @@ func parseAddressForCountry(rawAddress string, countryCode string) (address, cit
 	return address, city, postalCode
 }
 
-// fetchFromVIES fetches business information from the VIES API
+// fetchFromVIES fetches business information from the official VIES SOAP API
 func (s *VatService) fetchFromVIES(countryCode, number string) (*models.Client, error) {
-	// Check if we have VIES API credentials
-	if s.viesIdentifier == "" || s.viesKey == "" {
-		return nil, fmt.Errorf("VIES API credentials not configured")
-	}
-
 	// Construct the full VAT number
 	fullVatNumber := countryCode + number
 
-	// Use the correct API endpoint according to the documentation
-	path := fmt.Sprintf("/api/get/vies/euvat/%s", fullVatNumber)
-	url := fmt.Sprintf("https://viesapi.eu%s", path)
+	// Use the official VIES SOAP API endpoint
+	url := "https://ec.europa.eu/taxation_customs/vies/services/checkVatService"
 
 	s.logger.Debug("VAT Validation - Query: Sending request to %s", url)
 	s.logger.Debug("VAT Validation - Query: VAT ID = %s, Country Code = %s, Number = %s",
 		fullVatNumber, countryCode, number)
 
+	// Create the SOAP request body
+	soapEnvelope := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:ec.europa.eu:taxud:vies:services:checkVat:types">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:checkVat>
+         <urn:countryCode>%s</urn:countryCode>
+         <urn:vatNumber>%s</urn:vatNumber>
+      </urn:checkVat>
+   </soapenv:Body>
+</soapenv:Envelope>`, countryCode, number)
+
 	// Create the request
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("POST", url, strings.NewReader(soapEnvelope))
 	if err != nil {
 		s.logger.Error("Failed to create VIES API request: %v", err)
 		return nil, err
 	}
 
-	// Calculate timestamp and nonce for MAC authentication
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	nonce := generateRandomString(12)
-
-	// Calculate MAC value
-	macValue := calculateMAC(timestamp, nonce, "GET", path, "viesapi.eu", "443", s.viesKey)
-
-	// Set MAC authentication header
-	authHeader := fmt.Sprintf(`MAC id="%s", ts="%s", nonce="%s", mac="%s"`,
-		s.viesIdentifier, timestamp, nonce, macValue)
-	req.Header.Set("Authorization", authHeader)
-
-	s.logger.Debug("VAT Validation - Query: Authorization header set with timestamp=%s, nonce=%s",
-		timestamp, nonce)
-
-	// Set User-Agent as recommended in docs
+	// Set headers
+	req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
+	req.Header.Set("SOAPAction", "")
 	req.Header.Set("User-Agent", "SimpleInvoice/1.0.0 Go/1.20")
-	req.Header.Set("Accept", "application/json")
+
+	s.logger.Debug("VAT Validation - Query: Sending request with headers: %v", req.Header)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-
-	s.logger.Debug("VAT Validation - Query: Sending request with headers: %v", req.Header)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -411,353 +462,72 @@ func (s *VatService) fetchFromVIES(countryCode, number string) (*models.Client, 
 		return nil, fmt.Errorf(errMsg)
 	}
 
-	// Parse VIES API response according to the documented structure
-	var result struct {
-		Uid               string `json:"uid"`
-		CountryCode       string `json:"countryCode"`
-		VatNumber         string `json:"vatNumber"`
-		Valid             bool   `json:"valid"`
-		TraderName        string `json:"traderName"`
-		TraderCompanyType string `json:"traderCompanyType"`
-		TraderAddress     string `json:"traderAddress"`
-		ID                string `json:"id"`
-		Date              string `json:"date"`
-		Source            string `json:"source"`
+	// Parse the SOAP response
+	responseStr := string(bodyBytes)
+
+	// Check if the VAT number is valid
+	valid := strings.Contains(responseStr, "<ns2:valid>true</ns2:valid>")
+
+	// Extract the name
+	var name, address string
+
+	nameTag := "<ns2:name>"
+	nameEndTag := "</ns2:name>"
+	nameStart := strings.Index(responseStr, nameTag)
+	nameEnd := strings.Index(responseStr, nameEndTag)
+	if nameStart != -1 && nameEnd != -1 {
+		name = responseStr[nameStart+len(nameTag) : nameEnd]
 	}
 
-	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		s.logger.Error("Failed to decode VIES API response: %v", err)
-		return nil, err
+	// Extract the address
+	addressTag := "<ns2:address>"
+	addressEndTag := "</ns2:address>"
+	addressStart := strings.Index(responseStr, addressTag)
+	addressEnd := strings.Index(responseStr, addressEndTag)
+	if addressStart != -1 && addressEnd != -1 {
+		address = responseStr[addressStart+len(addressTag) : addressEnd]
 	}
+
+	// Clean up XML entities
+	name = strings.ReplaceAll(name, "&lt;", "<")
+	name = strings.ReplaceAll(name, "&gt;", ">")
+	name = strings.ReplaceAll(name, "&amp;", "&")
+	name = strings.ReplaceAll(name, "&quot;", "\"")
+	name = strings.ReplaceAll(name, "&apos;", "'")
+
+	address = strings.ReplaceAll(address, "&lt;", "<")
+	address = strings.ReplaceAll(address, "&gt;", ">")
+	address = strings.ReplaceAll(address, "&amp;", "&")
+	address = strings.ReplaceAll(address, "&quot;", "\"")
+	address = strings.ReplaceAll(address, "&apos;", "'")
 
 	s.logger.Debug("VAT Validation - Parsed Response: Valid = %t, Name = %s, Address = %s",
-		result.Valid, result.TraderName, result.TraderAddress)
+		valid, name, address)
 
-	if !result.Valid {
+	if !valid {
 		s.logger.Error("Invalid VAT ID according to VIES API: %s", fullVatNumber)
 		return nil, fmt.Errorf("invalid VAT ID")
 	}
 
 	s.logger.Info("Successfully validated VAT ID with VIES: %s", fullVatNumber)
-	s.logger.Debug("VIES response: Name=%s, Address=%s", result.TraderName, result.TraderAddress)
+	s.logger.Debug("VIES response: Name=%s, Address=%s", name, address)
 
 	// Parse address based on country code
-	address, city, postalCode := parseAddressForCountry(result.TraderAddress, countryCode)
+	parsedAddress, city, postalCode := parseAddressForCountry(address, countryCode)
 
 	// Normalize postal code
 	postalCode = normalizePostalCode(postalCode, countryCode)
 
 	s.logger.Debug("VAT Validation - Parsed Address: Address = %s, City = %s, PostalCode = %s",
-		address, city, postalCode)
+		parsedAddress, city, postalCode)
 
 	return &models.Client{
-		Name:       result.TraderName,
-		Address:    address,
+		Name:       name,
+		Address:    parsedAddress,
 		City:       city,
 		PostalCode: postalCode,
 		Country:    countryCode,
 		VatID:      fullVatNumber,
-	}, nil
-}
-
-// fetchFromUKVAT fetches business information from the UK VAT API
-func (s *VatService) fetchFromUKVAT(number string) (*models.Client, error) {
-	// Use the UK government's Check VAT API
-	apiURL := "https://api.service.hmrc.gov.uk/organisations/vat/check-vat-number/lookup"
-
-	// Create request body
-	data := url.Values{}
-	data.Set("target", number)
-
-	// Create request
-	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data.Encode()))
-	if err != nil {
-		return nil, err
-	}
-
-	// Set headers
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	// Send request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Read the body into a buffer so we can use it multiple times if needed
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		s.logger.Error("Failed to read UK VAT API response: %v", err)
-		return nil, err
-	}
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(bodyBytes))
-	}
-
-	// Parse response
-	var result struct {
-		Target  string `json:"target"`
-		Name    string `json:"name"`
-		Address struct {
-			Line1       string `json:"line1"`
-			Line2       string `json:"line2"`
-			Line3       string `json:"line3"`
-			Line4       string `json:"line4"`
-			PostalCode  string `json:"postalCode"`
-			CountryCode string `json:"countryCode"`
-		} `json:"address"`
-	}
-
-	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		s.logger.Error("Failed to decode UK VAT API response: %v", err)
-		return nil, err
-	}
-
-	if result.Target != number {
-		s.logger.Error("Invalid VAT ID according to UK VAT API: %s", number)
-		return nil, fmt.Errorf("invalid VAT ID")
-	}
-
-	s.logger.Info("Successfully validated VAT ID with UK VAT API: %s", number)
-	s.logger.Debug("UK VAT API response: Name=%s, Address=%s", result.Name, result.Address.Line1)
-
-	// Parse address based on country code
-	var address, city, postalCode string
-
-	if result.Address.CountryCode == "GB" {
-		// Use specialized UK address parser
-		address, city, postalCode = parseAddress(result.Address.Line1, result.Address.CountryCode)
-	} else {
-		// Use generic address parser for other countries
-		address, city, postalCode = parseAddress(result.Address.Line1, result.Address.CountryCode)
-	}
-
-	// Normalize postal code
-	postalCode = normalizePostalCode(postalCode, result.Address.CountryCode)
-
-	return &models.Client{
-		Name:       result.Name,
-		Address:    address,
-		City:       city,
-		PostalCode: postalCode,
-		Country:    result.Address.CountryCode,
-		VatID:      result.Address.CountryCode + number,
-	}, nil
-}
-
-// LookupUKCompany looks up a UK company by name or number
-func (s *VatService) LookupUKCompany(query string) (*models.Client, error) {
-	// Check if Companies House API key is available
-	if s.companiesHouseAPIKey == "" {
-		return nil, fmt.Errorf("Companies House API key not configured. Please set the COMPANIES_HOUSE_API_KEY environment variable")
-	}
-
-	// Check if the query is a company number (alphanumeric, typically 8 characters)
-	isCompanyNumber := regexp.MustCompile(`^[A-Z0-9]{6,8}$`).MatchString(query)
-
-	var companyNumber string
-
-	if isCompanyNumber {
-		// If it's a company number, use it directly
-		companyNumber = query
-		s.logger.Info("Looking up UK company by number: %s", companyNumber)
-	} else {
-		// Otherwise, search for the company by name
-		s.logger.Info("Searching for UK company by name: %s", query)
-
-		// Use the Companies House API to search for a company
-		apiURL := fmt.Sprintf("https://api.companieshouse.gov.uk/search/companies?q=%s", url.QueryEscape(query))
-
-		// Create request
-		req, err := http.NewRequest("GET", apiURL, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		// Set headers - Companies House API requires Basic Auth with API key as username and empty password
-		req.SetBasicAuth(s.companiesHouseAPIKey, "")
-
-		// Send request
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
-
-		// Check response status
-		if resp.StatusCode != http.StatusOK {
-			bodyBytes, _ := io.ReadAll(resp.Body)
-			return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(bodyBytes))
-		}
-
-		// Parse response
-		var result struct {
-			Items []struct {
-				CompanyNumber  string `json:"company_number"`
-				Title          string `json:"title"`
-				AddressSnippet string `json:"address_snippet"`
-				CompanyStatus  string `json:"company_status"`
-			} `json:"items"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, err
-		}
-
-		if len(result.Items) == 0 {
-			return nil, fmt.Errorf("no companies found with name: %s", query)
-		}
-
-		// Filter for active companies
-		var activeCompanies []struct {
-			CompanyNumber  string `json:"company_number"`
-			Title          string `json:"title"`
-			AddressSnippet string `json:"address_snippet"`
-			CompanyStatus  string `json:"company_status"`
-		}
-
-		for _, company := range result.Items {
-			if company.CompanyStatus == "active" {
-				activeCompanies = append(activeCompanies, company)
-			}
-		}
-
-		if len(activeCompanies) == 0 {
-			// If no active companies, use the first result
-			companyNumber = result.Items[0].CompanyNumber
-			s.logger.Warn("No active companies found, using first result: %s (%s)", result.Items[0].Title, companyNumber)
-		} else {
-			// Find the best match by comparing the name
-			bestMatch := activeCompanies[0]
-			bestScore := 0
-
-			for _, company := range activeCompanies {
-				// Simple scoring based on substring match
-				score := 0
-				if strings.Contains(strings.ToLower(company.Title), strings.ToLower(query)) {
-					score += 5
-				}
-
-				// Exact word matches
-				queryWords := strings.Fields(strings.ToLower(query))
-				titleWords := strings.Fields(strings.ToLower(company.Title))
-
-				for _, qw := range queryWords {
-					for _, tw := range titleWords {
-						if qw == tw {
-							score += 3
-						}
-					}
-				}
-
-				if score > bestScore {
-					bestScore = score
-					bestMatch = company
-				}
-			}
-
-			companyNumber = bestMatch.CompanyNumber
-			s.logger.Info("Selected company: %s (%s)", bestMatch.Title, companyNumber)
-		}
-	}
-
-	// Now get the company details
-	detailsURL := fmt.Sprintf("https://api.companieshouse.gov.uk/company/%s", companyNumber)
-
-	// Create request
-	req, err := http.NewRequest("GET", detailsURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// Set headers
-	req.SetBasicAuth(s.companiesHouseAPIKey, "")
-
-	// Send request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(bodyBytes))
-	}
-
-	// Parse response
-	var details struct {
-		CompanyName             string `json:"company_name"`
-		CompanyNumber           string `json:"company_number"`
-		RegisteredOfficeAddress struct {
-			AddressLine1 string `json:"address_line_1"`
-			AddressLine2 string `json:"address_line_2"`
-			Locality     string `json:"locality"`
-			PostalCode   string `json:"postal_code"`
-			Country      string `json:"country"`
-		} `json:"registered_office_address"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&details); err != nil {
-		return nil, err
-	}
-
-	// Build full address string
-	addressParts := []string{}
-	if details.RegisteredOfficeAddress.AddressLine1 != "" {
-		addressParts = append(addressParts, details.RegisteredOfficeAddress.AddressLine1)
-	}
-	if details.RegisteredOfficeAddress.AddressLine2 != "" {
-		addressParts = append(addressParts, details.RegisteredOfficeAddress.AddressLine2)
-	}
-
-	fullAddress := strings.Join(addressParts, ", ")
-
-	// For UK addresses, we already have structured data, so we can use it directly
-	// But we'll still use our parser for consistency if the locality or postal code is missing
-	city := ""
-	if details.RegisteredOfficeAddress.Locality != "" {
-		city = details.RegisteredOfficeAddress.Locality
-	}
-
-	postalCode := details.RegisteredOfficeAddress.PostalCode
-
-	// If city is still empty, try to extract it from the address
-	if city == "" || postalCode == "" {
-		_, extractedCity, extractedPostalCode := parseAddress(fullAddress, "GB")
-
-		if city == "" {
-			city = extractedCity
-		}
-
-		if postalCode == "" {
-			postalCode = extractedPostalCode
-		}
-	}
-
-	// Normalize postal code
-	postalCode = normalizePostalCode(postalCode, "GB")
-
-	// Use a placeholder for VAT ID - it needs to be filled in manually
-	vatID := "GB" // Placeholder, would need to be filled in manually
-	s.logger.Info("Using placeholder VAT ID for %s, it needs to be filled in manually", details.CompanyName)
-
-	return &models.Client{
-		Name:          details.CompanyName,
-		Address:       fullAddress,
-		City:          city,
-		PostalCode:    postalCode,
-		Country:       "GB",
-		VatID:         vatID,
-		CompanyNumber: companyNumber,
 	}, nil
 }
 
@@ -796,38 +566,23 @@ func isEUCountry(code string) bool {
 	return euCountries[code]
 }
 
-// Add these helper functions for MAC authentication
-
-// generateRandomString generates a random string of specified length
-func generateRandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
-	}
-	return string(b)
-}
-
-// calculateMAC calculates the HMAC-SHA256 for VIES API authentication
-func calculateMAC(timestamp, nonce, method, path, host, port, key string) string {
-	// Create the input string according to the documentation
-	input := fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n%s\n\n",
-		timestamp, nonce, method, path, host, port)
-
-	// Calculate HMAC-SHA256
-	h := hmac.New(sha256.New, []byte(key))
-	h.Write([]byte(input))
-
-	// Return Base64 encoded result
-	return base64.StdEncoding.EncodeToString(h.Sum(nil))
-}
-
 // normalizePostalCode formats a postal code according to country standards
 func normalizePostalCode(postalCode string, countryCode string) string {
 	// Remove all spaces first
 	postalCode = strings.ReplaceAll(postalCode, " ", "")
 
 	switch countryCode {
+	case "GB", "UK":
+		// Format UK postal codes as "XX XX" or "XXX XXX"
+		// UK postal codes are in the format:
+		// Area (1-2 characters) + District (1-2 characters) + Space + Sector (1 character) + Unit (2 characters)
+		// Examples: SW1A 1AA, M1 1AA, B1 1AA, etc.
+		if len(postalCode) >= 5 && len(postalCode) <= 7 {
+			// Find the position to insert the space
+			// The space always comes before the last 3 characters
+			insertPos := len(postalCode) - 3
+			return postalCode[:insertPos] + " " + postalCode[insertPos:]
+		}
 	case "CZ", "SE":
 		// Format as "XXX XX"
 		if len(postalCode) == 5 {
@@ -841,4 +596,202 @@ func normalizePostalCode(postalCode string, countryCode string) string {
 	}
 
 	return postalCode
+}
+
+// LookupUKCompany looks up a UK company by name using the Companies House API
+func (s *VatService) LookupUKCompany(name string) ([]*models.Client, error) {
+	if s.companiesHouseAPIKey == "" {
+		return nil, fmt.Errorf("Companies House API key not configured. Please set the COMPANIES_HOUSE_API_KEY environment variable")
+	}
+
+	// Use the Companies House API to search for companies
+	apiURL := fmt.Sprintf("https://api.company-information.service.gov.uk/search/companies?q=%s", url.QueryEscape(name))
+
+	s.logger.Debug("Companies House - Query: Sending request to %s", apiURL)
+	s.logger.Debug("Companies House - Query: Company Name = %s", name)
+
+	// Create the request
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		s.logger.Error("Failed to create Companies House request: %v", err)
+		return nil, err
+	}
+
+	// Set headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "SimpleInvoice/1.0.0 Go/1.20")
+
+	// Set basic auth with API key
+	req.SetBasicAuth(s.companiesHouseAPIKey, "")
+
+	s.logger.Debug("Companies House - Query: Sending request with headers: %v", req.Header)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		s.logger.Error("Companies House request failed: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read the body into a buffer so we can use it multiple times if needed
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read Companies House response: %v", err)
+		return nil, err
+	}
+
+	s.logger.Debug("Companies House - Response: Status code = %d", resp.StatusCode)
+	s.logger.Debug("Companies House - Response: Headers = %v", resp.Header)
+	s.logger.Debug("Companies House - Response: Body = %s", string(bodyBytes))
+
+	// Check for error responses
+	if resp.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("Companies House API error: %s - %s", resp.Status, string(bodyBytes))
+		s.logger.Error(errMsg)
+		return nil, fmt.Errorf(errMsg)
+	}
+
+	// Parse the response
+	var result struct {
+		Items []struct {
+			CompanyNumber  string `json:"company_number"`
+			Title          string `json:"title"`
+			AddressSnippet string `json:"address_snippet"`
+			Kind           string `json:"company_type"`
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		s.logger.Error("Failed to decode Companies House response: %v", err)
+		return nil, err
+	}
+
+	// Convert the results to clients
+	clients := make([]*models.Client, 0, len(result.Items))
+	for _, item := range result.Items {
+		// Parse the address to extract city and postal code
+		address, city, postalCode := parseAddressForCountry(item.AddressSnippet, "GB")
+
+		client := &models.Client{
+			Name:       item.Title,
+			Address:    address,
+			City:       city,
+			PostalCode: postalCode,
+			Country:    "GB",
+			// Note: VAT ID needs to be entered manually
+		}
+
+		clients = append(clients, client)
+	}
+
+	s.logger.Info("Successfully found %d UK companies matching '%s'", len(clients), name)
+	return clients, nil
+}
+
+// LookupUKCompanyByNumber looks up a UK company by company number using the Companies House API
+func (s *VatService) LookupUKCompanyByNumber(number string) (*models.Client, error) {
+	if s.companiesHouseAPIKey == "" {
+		return nil, fmt.Errorf("Companies House API key not configured. Please set the COMPANIES_HOUSE_API_KEY environment variable")
+	}
+
+	// Use the Companies House API to get company details
+	apiURL := fmt.Sprintf("https://api.company-information.service.gov.uk/company/%s", url.QueryEscape(number))
+
+	s.logger.Debug("Companies House - Query: Sending request to %s", apiURL)
+	s.logger.Debug("Companies House - Query: Company Number = %s", number)
+
+	// Create the request
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		s.logger.Error("Failed to create Companies House request: %v", err)
+		return nil, err
+	}
+
+	// Set headers
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "SimpleInvoice/1.0.0 Go/1.20")
+
+	// Set basic auth with API key
+	req.SetBasicAuth(s.companiesHouseAPIKey, "")
+
+	s.logger.Debug("Companies House - Query: Sending request with headers: %v", req.Header)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		s.logger.Error("Companies House request failed: %v", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read the body into a buffer so we can use it multiple times if needed
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.logger.Error("Failed to read Companies House response: %v", err)
+		return nil, err
+	}
+
+	s.logger.Debug("Companies House - Response: Status code = %d", resp.StatusCode)
+	s.logger.Debug("Companies House - Response: Headers = %v", resp.Header)
+	s.logger.Debug("Companies House - Response: Body = %s", string(bodyBytes))
+
+	// Check for error responses
+	if resp.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("Companies House API error: %s - %s", resp.Status, string(bodyBytes))
+		s.logger.Error(errMsg)
+		return nil, fmt.Errorf(errMsg)
+	}
+
+	// Parse the response
+	var result struct {
+		CompanyName             string `json:"company_name"`
+		CompanyNumber           string `json:"company_number"`
+		RegisteredOfficeAddress struct {
+			AddressLine1 string `json:"address_line_1"`
+			AddressLine2 string `json:"address_line_2"`
+			Locality     string `json:"locality"`
+			PostalCode   string `json:"postal_code"`
+			Country      string `json:"country"`
+		} `json:"registered_office_address"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		s.logger.Error("Failed to decode Companies House response: %v", err)
+		return nil, err
+	}
+
+	// Build the address
+	addressParts := []string{}
+	if result.RegisteredOfficeAddress.AddressLine1 != "" {
+		addressParts = append(addressParts, result.RegisteredOfficeAddress.AddressLine1)
+	}
+	if result.RegisteredOfficeAddress.AddressLine2 != "" {
+		addressParts = append(addressParts, result.RegisteredOfficeAddress.AddressLine2)
+	}
+
+	address := strings.Join(addressParts, ", ")
+	city := result.RegisteredOfficeAddress.Locality
+	postalCode := result.RegisteredOfficeAddress.PostalCode
+	country := "GB"
+	if result.RegisteredOfficeAddress.Country != "" {
+		country = result.RegisteredOfficeAddress.Country
+	}
+
+	s.logger.Info("Successfully found UK company with number '%s'", number)
+
+	return &models.Client{
+		Name:       result.CompanyName,
+		Address:    address,
+		City:       city,
+		PostalCode: postalCode,
+		Country:    country,
+		// Note: VAT ID needs to be entered manually
+	}, nil
 }

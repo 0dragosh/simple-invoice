@@ -255,13 +255,68 @@ func (s *DBService) initDB() error {
 			city TEXT NOT NULL,
 			postal_code TEXT NOT NULL,
 			country TEXT NOT NULL,
-			vat_id TEXT NOT NULL,
-			company_number TEXT
+			vat_id TEXT NOT NULL
 		)
 	`)
 	if err != nil {
 		s.logger.Error("Failed to create clients table: %v", err)
 		return fmt.Errorf("failed to create clients table: %w", err)
+	}
+
+	// Check if we need to remove the company_number column from the clients table
+	s.logger.Debug("Checking if company_number column exists in clients table")
+	var companyNumberColumnExists bool
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('clients')
+		WHERE name = 'company_number'
+	`).Scan(&companyNumberColumnExists)
+	if err != nil {
+		s.logger.Error("Failed to check if company_number column exists: %v", err)
+		return fmt.Errorf("failed to check if company_number column exists: %w", err)
+	}
+
+	if companyNumberColumnExists {
+		s.logger.Info("Removing company_number column from clients table")
+
+		// SQLite doesn't support DROP COLUMN directly, so we need to:
+		// 1. Create a new table without the column
+		// 2. Copy the data
+		// 3. Drop the old table
+		// 4. Rename the new table
+
+		_, err = s.db.Exec(`
+			BEGIN TRANSACTION;
+			
+			-- Create new table without company_number
+			CREATE TABLE clients_new (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				address TEXT NOT NULL,
+				city TEXT NOT NULL,
+				postal_code TEXT NOT NULL,
+				country TEXT NOT NULL,
+				vat_id TEXT NOT NULL
+			);
+			
+			-- Copy data from old table to new table
+			INSERT INTO clients_new (id, name, address, city, postal_code, country, vat_id)
+			SELECT id, name, address, city, postal_code, country, vat_id FROM clients;
+			
+			-- Drop old table
+			DROP TABLE clients;
+			
+			-- Rename new table to original name
+			ALTER TABLE clients_new RENAME TO clients;
+			
+			COMMIT;
+		`)
+		if err != nil {
+			s.logger.Error("Failed to remove company_number column: %v", err)
+			return fmt.Errorf("failed to remove company_number column: %w", err)
+		}
+
+		s.logger.Info("Successfully removed company_number column from clients table")
 	}
 
 	// Create invoices table
@@ -454,9 +509,9 @@ func (s *DBService) SaveClient(client *models.Client) error {
 	if client.ID == 0 {
 		// Insert new client
 		result, err := s.db.Exec(`
-			INSERT INTO clients (name, address, city, postal_code, country, vat_id, company_number)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CompanyNumber)
+			INSERT INTO clients (name, address, city, postal_code, country, vat_id)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID)
 		if err != nil {
 			return err
 		}
@@ -471,9 +526,9 @@ func (s *DBService) SaveClient(client *models.Client) error {
 		// Update existing client
 		_, err := s.db.Exec(`
 			UPDATE clients
-			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, company_number = ?
+			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?
 			WHERE id = ?
-		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CompanyNumber, client.ID)
+		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.ID)
 		if err != nil {
 			return err
 		}
@@ -488,7 +543,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 
 	var client models.Client
 	query := `
-		SELECT id, name, address, city, postal_code, country, vat_id, COALESCE(company_number, '') as company_number
+		SELECT id, name, address, city, postal_code, country, vat_id
 		FROM clients
 		WHERE id = ?
 	`
@@ -502,7 +557,6 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 		&client.PostalCode,
 		&client.Country,
 		&client.VatID,
-		&client.CompanyNumber,
 	)
 
 	if err != nil {
@@ -521,7 +575,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 // GetClients retrieves all clients from the database
 func (s *DBService) GetClients() ([]models.Client, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, address, city, postal_code, country, vat_id, COALESCE(company_number, '') as company_number
+		SELECT id, name, address, city, postal_code, country, vat_id
 		FROM clients
 		ORDER BY name
 	`)
@@ -533,7 +587,7 @@ func (s *DBService) GetClients() ([]models.Client, error) {
 	var clients []models.Client
 	for rows.Next() {
 		var client models.Client
-		if err := rows.Scan(&client.ID, &client.Name, &client.Address, &client.City, &client.PostalCode, &client.Country, &client.VatID, &client.CompanyNumber); err != nil {
+		if err := rows.Scan(&client.ID, &client.Name, &client.Address, &client.City, &client.PostalCode, &client.Country, &client.VatID); err != nil {
 			return nil, err
 		}
 		clients = append(clients, client)
