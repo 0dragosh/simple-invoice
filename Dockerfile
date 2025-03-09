@@ -24,6 +24,9 @@ FROM alpine:3.21.3
 # Install required dependencies for SQLite
 RUN apk --no-cache add ca-certificates tzdata sqlite
 
+# Create a non-root user and group
+RUN addgroup -S invoice && adduser -S invoice -G invoice
+
 WORKDIR /app
 
 # Copy the binary from the builder stage
@@ -34,7 +37,8 @@ COPY --from=builder /app/internal/templates /app/internal/templates
 
 # Create data directory
 RUN mkdir -p /app/data/images /app/data/pdfs && \
-    chmod -R 777 /app/data
+    chown -R invoice:invoice /app && \
+    chmod -R 755 /app/data
 
 # Expose port
 EXPOSE 8080
@@ -47,7 +51,10 @@ ENV LOG_LEVEL="INFO"
 # Volume for persistent data
 VOLUME ["/app/data"]
 
+# Switch to non-root user
+USER invoice
+
 # Run the application
-CMD ["./server"] 
+CMD ["./simple-invoice"]
 
 LABEL org.opencontainers.image.source=https://github.com/0dragosh/simple-invoice
