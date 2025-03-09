@@ -96,11 +96,15 @@ The CI/CD pipeline runs on:
 The workflow includes:
 - Building the application
 - Running tests with code coverage
-- Building and pushing Docker images to GitHub Container Registry (ghcr.io)
+- Building and pushing multi-platform Docker images to GitHub Container Registry (ghcr.io)
 
 ### Docker Images
 
-Docker images are automatically built and tagged with:
+Docker images are automatically built for multiple platforms:
+- linux/amd64 (Intel/AMD 64-bit)
+- linux/arm64 (ARM 64-bit, e.g., Apple Silicon, Raspberry Pi 4)
+
+Images are tagged with:
 - `latest` tag for the main branch
 - Semantic version tags for releases (e.g., `v1.0.0`, `v1.0`, `v1`)
 - Development tags with commit SHA for all other pushes (e.g., `dev-a1b2c3d`)
@@ -108,7 +112,13 @@ Docker images are automatically built and tagged with:
 ### Using the Container Image
 
 ```bash
+# For Intel/AMD systems
 docker pull ghcr.io/0dragosh/simple-invoice:latest
+
+# For ARM systems (e.g., Apple Silicon, Raspberry Pi)
+docker pull ghcr.io/0dragosh/simple-invoice:latest
+
+# Docker will automatically pull the correct image for your platform
 docker run -p 8080:8080 -v /path/to/data:/app/data ghcr.io/0dragosh/simple-invoice:latest
 ```
 
