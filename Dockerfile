@@ -35,9 +35,9 @@ COPY --from=builder /app/simple-invoice .
 # Copy templates
 COPY --from=builder /app/internal/templates /app/internal/templates
 
-# Create data directory
-RUN mkdir -p /app/data/images /app/data/pdfs && \
-    chown -R invoice:invoice /app && \
+# Create directory with correct permissions
+RUN mkdir -p /app/data/images && \
+    chown -R 2000:2000 /app/data && \
     chmod -R 755 /app/data
 
 # Expose port
