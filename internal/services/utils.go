@@ -87,17 +87,17 @@ func GetCurrencyForCountry(countryCode string) string {
 // FormatCurrencySymbol returns the appropriate currency symbol for a given currency code
 func FormatCurrencySymbol(currencyCode string) string {
 	currencySymbols := map[string]string{
-		"EUR": "€",
-		"GBP": "£",
-		"BGN": "лв",
-		"HRK": "kn",
-		"CZK": "Kč",
-		"DKK": "kr",
-		"HUF": "Ft",
-		"PLN": "zł",
-		"RON": "lei",
-		"SEK": "kr",
-		"USD": "$",
+		"EUR": "EUR", // Using "EUR" instead of "€"
+		"GBP": "GBP", // Using "GBP" instead of "£"
+		"BGN": "BGN", // Using "BGN" instead of "лв"
+		"HRK": "HRK", // Using "HRK" instead of "kn"
+		"CZK": "CZK", // Using "CZK" instead of "Kč"
+		"DKK": "DKK", // Using "DKK" instead of "kr"
+		"HUF": "HUF", // Using "HUF" instead of "Ft"
+		"PLN": "PLN", // Using "PLN" instead of "zł"
+		"RON": "RON", // Using "RON" instead of "lei"
+		"SEK": "SEK", // Using "SEK" instead of "kr"
+		"USD": "USD", // Using "USD" instead of "$"
 	}
 
 	if symbol, exists := currencySymbols[currencyCode]; exists {

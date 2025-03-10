@@ -71,7 +71,7 @@
                     <div class="form-text">Upload your business logo for invoices (optional)</div>
                     {{if .Business.LogoPath}}
                     <div class="mt-2">
-                        <img src="/data/images/{{filepath.Base .Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
+                        <img src="/data/images/{{.Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
                     </div>
                     {{end}}
                 </div>

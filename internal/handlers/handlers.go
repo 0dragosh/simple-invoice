@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,132 +19,193 @@ import (
 	"github.com/0dragosh/simple-invoice/internal/services"
 )
 
-// AppHandler holds the services and templates for the application
+// AppHandler handles HTTP requests
 type AppHandler struct {
-	dbService  *services.DBService
-	vatService *services.VatService
-	pdfService *services.PDFService
-	templates  map[string]*template.Template
-	dataDir    string
-	logger     *services.Logger
+	dbService     *services.DBService
+	vatService    *services.VatService
+	pdfService    *services.PDFService
+	backupService *services.BackupService
+	templates     map[string]*template.Template
+	dataDir       string
+	logger        *services.Logger
 }
 
 // NewAppHandler creates a new AppHandler
 func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error) {
-	// Ensure data directory exists
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %w", err)
-	}
-
-	// Create images directory
-	imagesDir := filepath.Join(dataDir, "images")
-	if err := os.MkdirAll(imagesDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create images directory: %w", err)
-	}
-
-	// Create pdfs directory
-	pdfsDir := filepath.Join(dataDir, "pdfs")
-	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create pdfs directory: %w", err)
-	}
-
-	logger.Info("Initializing application handler")
-
-	// Initialize services
+	// Create DB service
 	dbService, err := services.NewDBService(dataDir, logger)
 	if err != nil {
-		logger.Error("Failed to initialize database service: %v", err)
-		return nil, fmt.Errorf("failed to initialize database service: %w", err)
+		return nil, fmt.Errorf("failed to create DB service: %w", err)
 	}
 
+	// Create VAT service
 	vatService := services.NewVatService(logger)
+
+	// Create PDF service
 	pdfService := services.NewPDFService(dataDir)
 
+	// Create Backup service
+	backupService, err := services.NewBackupService(dbService.GetDB(), dataDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create backup service: %w", err)
+	}
+
+	// Start backup scheduler if BACKUP_CRON is set
+	backupCron := os.Getenv("BACKUP_CRON")
+	if backupCron != "" {
+		if err := backupService.StartScheduler(backupCron); err != nil {
+			logger.Warn("Failed to start backup scheduler: %v", err)
+		}
+	}
+
 	// Parse templates
+	templates, err := parseTemplates(logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse templates: %w", err)
+	}
+
+	return &AppHandler{
+		dbService:     dbService,
+		vatService:    vatService,
+		pdfService:    pdfService,
+		backupService: backupService,
+		templates:     templates,
+		dataDir:       dataDir,
+		logger:        logger,
+	}, nil
+}
+
+// Helper function to format dates
+func formatDate(t time.Time) string {
+	return t.Format("2006-01-02")
+}
+
+// Helper function to format money
+func formatMoney(amount float64) string {
+	return fmt.Sprintf("%.2f", amount)
+}
+
+// Helper function to format file sizes
+func formatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+}
+
+// formatCurrency formats a float as a currency value with 2 decimal places
+func formatCurrency(amount float64) string {
+	return fmt.Sprintf("%.2f", amount)
+}
+
+// currencySymbol returns the symbol for a given currency code
+func currencySymbol(currency string) string {
+	return services.FormatCurrencySymbol(currency)
+}
+
+// add adds two float64 values
+func add(a, b float64) float64 {
+	return a + b
+}
+
+// parseTemplates parses all HTML templates
+func parseTemplates(logger *services.Logger) (map[string]*template.Template, error) {
 	templates := make(map[string]*template.Template)
-	templatesDir := "internal/templates"
 
 	// Define template functions
 	funcMap := template.FuncMap{
-		"add": func(a, b float64) float64 {
-			return a + b
-		},
-		"formatDate": func(t time.Time) string {
-			return t.Format("2006-01-02")
-		},
-		"formatCurrency": func(amount float64) string {
-			return fmt.Sprintf("%.2f", amount)
-		},
-		"currencySymbol": func(currencyCode string) string {
-			return services.FormatCurrencySymbol(currencyCode)
-		},
-		"filepath": filepath.Base,
+		"formatDate":     formatDate,
+		"formatMoney":    formatMoney,
+		"formatFileSize": formatFileSize,
+		"formatCurrency": formatCurrency,
+		"currencySymbol": currencySymbol,
+		"add":            add,
 	}
 
-	// Load base layout
-	baseLayout := filepath.Join(templatesDir, "layout.html")
+	// Parse base template
+	baseTemplate, err := template.New("layout.html").Funcs(funcMap).ParseFiles("internal/templates/layout.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse base template: %w", err)
+	}
 
-	// Load page templates
-	pages := []string{"index", "business", "clients", "invoices", "create-invoice", "view-invoice"}
-	for _, page := range pages {
-		tmpl, err := template.New("layout").Funcs(funcMap).ParseFiles(baseLayout, filepath.Join(templatesDir, page+".html"))
+	// Parse content templates
+	contentTemplates := []string{
+		"internal/templates/index.html",
+		"internal/templates/business.html",
+		"internal/templates/clients.html",
+		"internal/templates/invoices.html",
+		"internal/templates/create-invoice.html",
+		"internal/templates/view-invoice.html",
+		"internal/templates/backups.html",
+	}
+
+	for _, tmpl := range contentTemplates {
+		// Clone the base template
+		t, err := baseTemplate.Clone()
 		if err != nil {
-			logger.Error("Failed to parse template %s: %v", page, err)
-			return nil, fmt.Errorf("failed to parse template %s: %w", page, err)
+			return nil, fmt.Errorf("failed to clone base template: %w", err)
 		}
-		templates[page] = tmpl
+
+		// Parse the content template
+		t, err = t.ParseFiles(tmpl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse template %s: %w", tmpl, err)
+		}
+
+		// Add to templates map
+		name := filepath.Base(tmpl)
+		// Remove the .html extension
+		name = strings.TrimSuffix(name, ".html")
+		templates[name] = t
+		logger.Debug("Parsed template: %s", name)
 	}
 
-	logger.Info("Application handler initialized successfully")
-
-	return &AppHandler{
-		dbService:  dbService,
-		vatService: vatService,
-		pdfService: pdfService,
-		templates:  templates,
-		dataDir:    dataDir,
-		logger:     logger,
-	}, nil
+	return templates, nil
 }
 
 // RegisterHandlers registers all HTTP handlers
 func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logger) (*AppHandler, error) {
 	handler, err := NewAppHandler(dataDir, logger)
 	if err != nil {
-		logger.Fatal("Failed to create application handler: %v", err)
-		return nil, fmt.Errorf("failed to create application handler: %w", err)
+		return nil, err
 	}
 
-	// Pages
+	// Register page handlers
 	mux.HandleFunc("/", handler.IndexHandler)
 	mux.HandleFunc("/business", handler.BusinessHandler)
 	mux.HandleFunc("/clients", handler.ClientsHandler)
 	mux.HandleFunc("/invoices", handler.InvoicesHandler)
 	mux.HandleFunc("/invoices/create", handler.CreateInvoiceHandler)
 	mux.HandleFunc("/invoices/view/", handler.ViewInvoiceHandler)
+	mux.HandleFunc("/backups", handler.BackupsHandler)
 
-	// API endpoints - register more specific routes first
+	// Register API handlers
+	mux.HandleFunc("/api/business", handler.BusinessAPIHandler)
+	mux.HandleFunc("/api/clients", handler.ClientsAPIHandler)
+	mux.HandleFunc("/api/clients/", handler.ClientsAPIHandler)
 	mux.HandleFunc("/api/clients/vat-lookup", handler.VatLookupHandler)
 	mux.HandleFunc("/api/clients/uk-company-lookup", handler.UKCompanyLookupHandler)
-	mux.HandleFunc("/api/invoices/generate-pdf/", handler.GeneratePDFHandler)
-	mux.HandleFunc("/api/invoices/", handler.InvoiceByIDHandler)
-
-	// Then register the more general routes
-	mux.HandleFunc("/api/business", handler.BusinessAPIHandler)
-	mux.HandleFunc("/api/clients/", handler.ClientsAPIHandler)
-	mux.HandleFunc("/api/clients", handler.ClientsAPIHandler)
 	mux.HandleFunc("/api/invoices", handler.InvoicesAPIHandler)
-	mux.HandleFunc("/api/upload-logo", handler.UploadLogoHandler)
+	mux.HandleFunc("/api/invoices/", handler.InvoiceByIDHandler)
+	mux.HandleFunc("/api/invoices/generate-pdf/", handler.GeneratePDFHandler)
+	mux.HandleFunc("/api/upload/logo", handler.UploadLogoHandler)
+	mux.HandleFunc("/api/backups", handler.BackupsAPIHandler)
+	mux.HandleFunc("/api/backups/restore", handler.RestoreBackupHandler)
 
-	// Serve static files from data directory
-	fs := http.FileServer(http.Dir(dataDir))
-	mux.Handle("/data/", http.StripPrefix("/data/", fs))
+	// Register static file handler
+	fileServer := http.FileServer(http.Dir(dataDir))
+	mux.Handle("/data/", http.StripPrefix("/data/", fileServer))
 
-	// Log the data directory path for debugging
-	logger.Info("Serving static files from: %s", dataDir)
-	logger.Info("PDF files will be available at: %s/pdfs/", dataDir)
-
-	logger.Info("All handlers registered successfully")
+	// Log the data directory and static file paths
+	logger.Info("Data directory: %s", dataDir)
+	logger.Info("Static files will be served from: %s", dataDir)
+	logger.Info("PDFs will be available at: /data/pdfs/")
 
 	return handler, nil
 }
@@ -425,10 +489,10 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(clients)
 
 	case http.MethodPost:
-		h.logger.Info("Received request to create/update client")
+		w.Header().Set("Content-Type", "application/json")
 
-		// Decode the client directly
 		var client models.Client
+		h.logger.Debug("Decoding client JSON from request body")
 		if err := json.NewDecoder(r.Body).Decode(&client); err != nil {
 			h.logger.Error("Failed to decode client JSON: %v", err)
 			http.Error(w, fmt.Sprintf("Invalid client data: %v", err), http.StatusBadRequest)
@@ -439,17 +503,31 @@ func (h *AppHandler) ClientsAPIHandler(w http.ResponseWriter, r *http.Request) {
 		if client.CreatedDate == nil {
 			now := time.Now()
 			client.CreatedDate = &now
+			h.logger.Debug("No created date provided, using current time: %v", now)
 		}
 
-		h.logger.Info("Processing client with ID: %d", client.ID)
+		h.logger.Info("Processing client with ID: %d, Name: %s, VAT ID: %s, Country: %s",
+			client.ID, client.Name, client.VatID, client.Country)
 
+		// Special handling for UK VAT IDs
+		if strings.HasPrefix(strings.ToUpper(client.VatID), "GB") {
+			h.logger.Info("UK VAT ID detected: %s", client.VatID)
+
+			// Ensure country is set to GB for UK VAT IDs
+			if client.Country != "GB" {
+				h.logger.Info("Setting country to GB for UK VAT ID")
+				client.Country = "GB"
+			}
+		}
+
+		h.logger.Debug("Saving client to database: %+v", client)
 		if err := h.dbService.SaveClient(&client); err != nil {
 			h.logger.Error("Failed to save client: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to save client: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		h.logger.Info("Successfully saved client: %s", client.Name)
+		h.logger.Info("Successfully saved client: %s with ID: %d", client.Name, client.ID)
 		json.NewEncoder(w).Encode(client)
 
 	default:
@@ -566,11 +644,38 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 	case http.MethodPost:
 		h.logger.Info("Received request to create/update invoice")
 
+		// Read the request body for logging
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			h.logger.Error("Failed to read request body: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to read request body: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Log the raw request body for debugging
+		h.logger.Debug("Raw request body: %s", string(bodyBytes))
+
+		// Create a new reader from the bytes for further processing
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
 		// First, decode the raw JSON to handle date strings manually
 		var rawRequest map[string]json.RawMessage
 		if err := json.NewDecoder(r.Body).Decode(&rawRequest); err != nil {
 			h.logger.Error("Failed to decode invoice JSON: %v", err)
 			http.Error(w, fmt.Sprintf("Invalid invoice data: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Check if required fields exist in the request
+		if _, ok := rawRequest["invoice"]; !ok {
+			h.logger.Error("Missing 'invoice' field in request")
+			http.Error(w, "Missing 'invoice' field in request", http.StatusBadRequest)
+			return
+		}
+
+		if _, ok := rawRequest["items"]; !ok {
+			h.logger.Error("Missing 'items' field in request")
+			http.Error(w, "Missing 'items' field in request", http.StatusBadRequest)
 			return
 		}
 
@@ -589,6 +694,10 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, fmt.Sprintf("Invalid invoice items: %v", err), http.StatusBadRequest)
 			return
 		}
+
+		// Log the parsed data for debugging
+		h.logger.Debug("Parsed invoice data: %+v", rawInvoice)
+		h.logger.Debug("Parsed items: %+v", items)
 
 		// Create the invoice object
 		invoice := models.Invoice{
@@ -669,6 +778,83 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 		}
 
 		h.logger.Info("Successfully saved invoice #%s with ID: %d", invoice.InvoiceNumber, invoice.ID)
+
+		// Automatically generate PDF for the new invoice
+		go func() {
+			// Create a context with timeout for PDF generation
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Create a channel to receive errors
+			errCh := make(chan error, 1)
+
+			// Run PDF generation in a goroutine
+			go func() {
+				h.logger.Info("Automatically generating PDF for invoice ID: %d", invoice.ID)
+
+				// Get the necessary data for PDF generation
+				savedInvoice, savedItems, err := h.dbService.GetInvoice(invoice.ID)
+				if err != nil {
+					h.logger.Error("Failed to get invoice for automatic PDF generation: %v", err)
+					errCh <- fmt.Errorf("failed to get invoice: %w", err)
+					return
+				}
+
+				business, err := h.dbService.GetBusiness(savedInvoice.BusinessID)
+				if err != nil {
+					h.logger.Error("Failed to get business for automatic PDF generation: %v", err)
+					errCh <- fmt.Errorf("failed to get business: %w", err)
+					return
+				}
+
+				client, err := h.dbService.GetClient(savedInvoice.ClientID)
+				if err != nil {
+					h.logger.Error("Failed to get client for automatic PDF generation: %v", err)
+					errCh <- fmt.Errorf("failed to get client: %w", err)
+					return
+				}
+
+				// Ensure the pdfs directory exists
+				pdfsDir := filepath.Join(h.dataDir, "pdfs")
+				if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+					h.logger.Error("Failed to create pdfs directory for automatic generation: %v", err)
+					errCh <- fmt.Errorf("failed to create pdfs directory: %w", err)
+					return
+				}
+
+				// Generate the PDF
+				pdfPath, err := h.pdfService.GenerateInvoice(savedInvoice, business, client, savedItems)
+				if err != nil {
+					h.logger.Error("Failed to automatically generate PDF: %v", err)
+					errCh <- fmt.Errorf("failed to generate PDF: %w", err)
+					return
+				}
+
+				// Verify the file exists and is accessible
+				if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
+					h.logger.Error("Generated PDF file does not exist: %s", pdfPath)
+					errCh <- fmt.Errorf("generated PDF file not found: %s", pdfPath)
+					return
+				}
+
+				// Extract just the filename from the full path
+				pdfFilename := filepath.Base(pdfPath)
+				h.logger.Info("Successfully generated PDF: %s at path: %s", pdfFilename, pdfPath)
+				errCh <- nil
+			}()
+
+			// Wait for either the PDF generation to complete or the context to timeout
+			select {
+			case err := <-errCh:
+				if err != nil {
+					h.logger.Error("PDF generation failed: %v", err)
+				}
+			case <-ctx.Done():
+				h.logger.Error("PDF generation timed out after 30 seconds")
+			}
+		}()
+
+		// Return the created invoice to the client
 		json.NewEncoder(w).Encode(invoice)
 
 	default:
@@ -757,10 +943,14 @@ func (h *AppHandler) GeneratePDFHandler(w http.ResponseWriter, r *http.Request) 
 		h.logger.Debug("PDF file permissions: %v, size: %d bytes", fileInfo.Mode(), fileInfo.Size())
 	}
 
+	// Set the correct URL for the PDF file
+	pdfURL := fmt.Sprintf("/data/pdfs/%s", pdfFilename)
+	h.logger.Debug("PDF URL: %s", pdfURL)
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]string{
 		"filename": pdfFilename,
-		"url":      "/data/pdfs/" + pdfFilename,
+		"url":      pdfURL,
 	}
 	h.logger.Debug("Sending PDF response: %v", response)
 
@@ -915,21 +1105,30 @@ func (h *AppHandler) InvoiceByIDHandler(w http.ResponseWriter, r *http.Request) 
 
 // renderTemplate renders a template with the given data
 func (h *AppHandler) renderTemplate(w http.ResponseWriter, tmpl string, data map[string]interface{}) {
+	// Get the template
 	t, ok := h.templates[tmpl]
 	if !ok {
-		http.Error(w, fmt.Sprintf("Template %s not found", tmpl), http.StatusInternalServerError)
+		h.logger.Error("Template not found: %s", tmpl)
+		http.Error(w, fmt.Sprintf("Template not found: %s", tmpl), http.StatusInternalServerError)
 		return
 	}
 
-	err := t.ExecuteTemplate(w, "layout", data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Render the template
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		h.logger.Error("Failed to render template: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to render template: %v", err), http.StatusInternalServerError)
+		return
 	}
 }
 
-// Cleanup performs cleanup operations before shutdown
+// Cleanup performs cleanup tasks before application shutdown
 func (h *AppHandler) Cleanup() error {
-	h.logger.Info("Cleaning up resources...")
+	h.logger.Info("Performing cleanup tasks")
+
+	// Stop the backup scheduler
+	if h.backupService != nil {
+		h.backupService.StopScheduler()
+	}
 
 	// Close database connection
 	if h.dbService != nil {

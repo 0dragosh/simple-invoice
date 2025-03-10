@@ -43,7 +43,7 @@
                         <td>
                             <div class="btn-group">
                                 <a href="/invoices/view/{{.ID}}" class="btn btn-sm btn-info">View</a>
-                                <button class="btn btn-sm btn-success generate-pdf-btn" data-id="{{.ID}}">PDF</button>
+                                <a href="/data/pdfs/invoice-{{.InvoiceNumber}}.pdf" target="_blank" class="btn btn-sm btn-success">PDF</a>
                                 <button class="btn btn-sm btn-primary update-status" data-id="{{.ID}}" data-status="{{.Status}}">Status</button>
                                 <button class="btn btn-sm btn-danger delete-invoice" data-id="{{.ID}}" data-number="{{.InvoiceNumber}}">Delete</button>
                             </div>
@@ -93,14 +93,6 @@
 document.addEventListener('DOMContentLoaded', function() {
     const statusModal = new bootstrap.Modal(document.getElementById('statusModal'));
     const saveStatusBtn = document.getElementById('saveStatusBtn');
-    
-    // Generate PDF buttons
-    document.querySelectorAll('.generate-pdf-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            const invoiceId = this.getAttribute('data-id');
-            generatePDF(invoiceId);
-        });
-    });
     
     // Update status buttons
     document.querySelectorAll('.update-status').forEach(button => {
@@ -178,92 +170,6 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error deleting invoice:', error);
             alert('Error deleting invoice: ' + error.message);
         });
-    }
-    
-    // Generate PDF
-    function generatePDF(invoiceId) {
-        console.log(`Generating PDF for invoice ID: ${invoiceId}`);
-        
-        // Show loading indicator
-        const row = document.querySelector(`tr[data-id="${invoiceId}"]`);
-        if (!row) {
-            console.error(`Could not find row with data-id=${invoiceId}`);
-            alert('Error: Could not find invoice row');
-            return;
-        }
-        
-        const generateBtn = row.querySelector('.generate-pdf-btn');
-        if (!generateBtn) {
-            console.error(`Could not find generate PDF button in row with data-id=${invoiceId}`);
-            alert('Error: Could not find PDF button');
-            return;
-        }
-        
-        // Store original text and disable button
-        const originalBtnText = generateBtn.textContent || 'PDF';
-        generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
-        generateBtn.disabled = true;
-        
-        console.log(`Sending fetch request to /api/invoices/generate-pdf/${invoiceId}`);
-        
-        fetch(`/api/invoices/generate-pdf/${invoiceId}`)
-            .then(response => {
-                console.log(`Received response with status: ${response.status}`);
-                if (!response.ok) {
-                    return response.json().then(data => {
-                        throw new Error(data.message || 'Failed to generate PDF');
-                    }).catch(e => {
-                        // If we can't parse JSON, use the status text
-                        throw new Error(`Failed to generate PDF: ${response.status} ${response.statusText}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('PDF generated successfully:', data);
-                // Ensure we have an absolute URL by prepending the origin if needed
-                const pdfUrl = data.url.startsWith('http') ? data.url : window.location.origin + data.url;
-                console.log(`Opening PDF at URL: ${pdfUrl}`);
-                
-                // Try to open in a new tab
-                const newWindow = window.open(pdfUrl, '_blank');
-                
-                // If popup was blocked or failed, show a direct link
-                if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-                    console.log('Window.open() was blocked or failed, showing direct link');
-                    
-                    // Remove any existing download link
-                    const existingLink = document.getElementById('direct-download-link');
-                    if (existingLink) {
-                        existingLink.remove();
-                    }
-                    
-                    // Create a direct download link
-                    const downloadLink = document.createElement('a');
-                    downloadLink.id = 'direct-download-link';
-                    downloadLink.href = pdfUrl;
-                    downloadLink.target = '_blank';
-                    downloadLink.className = 'btn btn-sm btn-info mt-2';
-                    downloadLink.textContent = 'Download PDF';
-                    downloadLink.style.display = 'block';
-                    
-                    // Add the link after the button
-                    generateBtn.parentNode.appendChild(downloadLink);
-                    
-                    // Show a message
-                    alert('PDF generated. Click the Download PDF button to view it.');
-                }
-            })
-            .catch(error => {
-                console.error('Error generating PDF:', error);
-                alert('Error generating PDF: ' + error.message);
-            })
-            .finally(() => {
-                // Restore button state
-                console.log('Restoring button state');
-                generateBtn.innerHTML = originalBtnText;
-                generateBtn.disabled = false;
-            });
     }
 });
 </script>

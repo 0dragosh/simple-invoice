@@ -169,29 +169,116 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // VAT lookup
     lookupVatBtn.addEventListener('click', function() {
-        const vatId = document.getElementById('vatId').value;
+        const vatId = document.getElementById('vatId').value.trim();
         if (!vatId) {
             alert('Please enter a VAT ID');
             return;
         }
         
+        // Check if it's a UK VAT ID
+        if (vatId.toUpperCase().startsWith('GB') || document.getElementById('country').value === 'GB') {
+            console.log('UK VAT ID detected:', vatId);
+            
+            // For UK VAT IDs, we'll set the country to GB and show a warning
+            let ukVatId = vatId;
+            if (!ukVatId.toUpperCase().startsWith('GB')) {
+                ukVatId = 'GB' + ukVatId;
+                document.getElementById('vatId').value = ukVatId;
+            }
+            
+            document.getElementById('country').value = 'GB';
+            
+            // Show a warning message
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'alert alert-warning mt-3';
+            warningDiv.innerHTML = '<strong>Note:</strong> UK VAT IDs cannot be automatically validated. Please ensure the VAT ID is correct.';
+            
+            // Add the warning to the modal
+            const modalBody = document.querySelector('#addClientModal .modal-body');
+            
+            // Remove any existing warning
+            const existingWarning = modalBody.querySelector('.alert-warning');
+            if (existingWarning) {
+                existingWarning.remove();
+            }
+            
+            modalBody.appendChild(warningDiv);
+            
+            return;
+        }
+        
+        console.log('Looking up VAT ID:', vatId);
         fetch(`/api/clients/vat-lookup?vat_id=${encodeURIComponent(vatId)}`)
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('VAT ID lookup failed');
+                    // Try to get the error message from the response
+                    return response.text().then(text => {
+                        console.error('Server response:', text);
+                        try {
+                            // Try to parse as JSON
+                            const data = JSON.parse(text);
+                            throw new Error(data.message || 'VAT ID lookup failed');
+                        } catch (e) {
+                            // If not JSON, use the text directly
+                            throw new Error(text || 'VAT ID lookup failed');
+                        }
+                    });
                 }
                 return response.json();
             })
             .then(data => {
+                console.log('VAT lookup result:', data);
                 document.getElementById('name').value = data.name || '';
                 document.getElementById('address').value = data.address || '';
                 document.getElementById('city').value = data.city || '';
                 document.getElementById('postalCode').value = data.postal_code || '';
                 document.getElementById('country').value = data.country || '';
+                
+                // If it's a UK VAT ID, show a warning
+                if (data.country === 'GB' || (data.vat_id && data.vat_id.toUpperCase().startsWith('GB'))) {
+                    // Show a warning message
+                    const warningDiv = document.createElement('div');
+                    warningDiv.className = 'alert alert-warning mt-3';
+                    warningDiv.innerHTML = '<strong>Note:</strong> UK VAT IDs cannot be automatically validated. Please ensure the VAT ID is correct.';
+                    
+                    // Add the warning to the modal
+                    const modalBody = document.querySelector('#addClientModal .modal-body');
+                    
+                    // Remove any existing warning
+                    const existingWarning = modalBody.querySelector('.alert-warning');
+                    if (existingWarning) {
+                        existingWarning.remove();
+                    }
+                    
+                    modalBody.appendChild(warningDiv);
+                }
             })
             .catch(error => {
                 console.error('Error looking up VAT ID:', error);
-                alert('Error looking up VAT ID: ' + error.message);
+                
+                // Check if it might be a UK VAT ID that failed validation
+                if (vatId.toUpperCase().startsWith('GB')) {
+                    // Set the country to GB
+                    document.getElementById('country').value = 'GB';
+                    
+                    // Show a warning message
+                    const warningDiv = document.createElement('div');
+                    warningDiv.className = 'alert alert-warning mt-3';
+                    warningDiv.innerHTML = '<strong>Note:</strong> UK VAT IDs cannot be automatically validated. Please ensure the VAT ID is correct.';
+                    
+                    // Add the warning to the modal
+                    const modalBody = document.querySelector('#addClientModal .modal-body');
+                    
+                    // Remove any existing warning
+                    const existingWarning = modalBody.querySelector('.alert-warning');
+                    if (existingWarning) {
+                        existingWarning.remove();
+                    }
+                    
+                    modalBody.appendChild(warningDiv);
+                } else {
+                    alert('Error looking up VAT ID: ' + error.message);
+                }
             });
     });
     
@@ -291,20 +378,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         const clientId = document.getElementById('clientId').value;
+        const vatId = document.getElementById('vatId').value.trim();
+        const country = document.getElementById('country').value.trim();
+        
+        // Ensure UK VAT IDs start with GB
+        let finalVatId = vatId;
+        if (country === 'GB' && !vatId.toUpperCase().startsWith('GB')) {
+            finalVatId = 'GB' + vatId;
+            console.log('Added GB prefix to VAT ID:', finalVatId);
+        }
+        
         const client = {
             id: parseInt(clientId) || 0,
             name: document.getElementById('name').value,
             address: document.getElementById('address').value,
             city: document.getElementById('city').value,
             postal_code: document.getElementById('postalCode').value,
-            country: document.getElementById('country').value,
-            vat_id: document.getElementById('vatId').value,
+            country: country,
+            vat_id: finalVatId,
             created_date: new Date().toISOString() // Use ISO format for proper time parsing
         };
         
         // Check if it's a UK VAT ID
-        const vatId = client.vat_id.toUpperCase().trim();
-        if (vatId.startsWith('GB')) {
+        if (finalVatId.toUpperCase().startsWith('GB')) {
             // Show a warning message for UK VAT IDs
             const warningDiv = document.createElement('div');
             warningDiv.className = 'alert alert-warning mt-3';
@@ -320,7 +416,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             modalBody.appendChild(warningDiv);
+            
+            // Ensure country is GB for UK VAT IDs
+            if (client.country !== 'GB') {
+                console.log('Setting country to GB for UK VAT ID');
+                client.country = 'GB';
+            }
         }
+        
+        console.log('Saving client:', client);
         
         fetch('/api/clients', {
             method: 'POST',
@@ -331,8 +435,17 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => {
             if (!response.ok) {
-                return response.json().then(data => {
-                    throw new Error(data.message || 'Failed to save client');
+                // Try to get the error message from the response
+                return response.text().then(text => {
+                    console.error('Server response:', text);
+                    try {
+                        // Try to parse as JSON
+                        const data = JSON.parse(text);
+                        throw new Error(data.message || 'Failed to save client');
+                    } catch (e) {
+                        // If not JSON, use the text directly
+                        throw new Error(text || 'Failed to save client');
+                    }
                 });
             }
             return response.json();

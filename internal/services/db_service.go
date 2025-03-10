@@ -484,20 +484,43 @@ func (s *DBService) SaveBusiness(business *models.Business) error {
 
 // GetBusiness retrieves a business from the database
 func (s *DBService) GetBusiness(id int) (*models.Business, error) {
+	// Create a context with timeout for database operations
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	s.logger.Info("Fetching business with ID: %d", id)
+
 	var business models.Business
-	err := s.db.QueryRow(`
+	err := s.db.QueryRowContext(ctx, `
 		SELECT id, name, address, city, postal_code, country, vat_id, email, bank_name, bank_account, iban, bic, logo_path
 		FROM businesses
 		WHERE id = ?
 	`, id).Scan(
-		&business.ID, &business.Name, &business.Address, &business.City, &business.PostalCode,
-		&business.Country, &business.VatID, &business.Email, &business.BankName, &business.BankAccount,
-		&business.IBAN, &business.BIC, &business.LogoPath,
+		&business.ID,
+		&business.Name,
+		&business.Address,
+		&business.City,
+		&business.PostalCode,
+		&business.Country,
+		&business.VatID,
+		&business.Email,
+		&business.BankName,
+		&business.BankAccount,
+		&business.IBAN,
+		&business.BIC,
+		&business.LogoPath,
 	)
+
 	if err != nil {
+		if err == sql.ErrNoRows {
+			s.logger.Warn("No business found with ID: %d", id)
+		} else {
+			s.logger.Error("Database error when fetching business ID %d: %v", id, err)
+		}
 		return nil, err
 	}
 
+	s.logger.Debug("Successfully fetched business: %s (ID: %d)", business.Name, business.ID)
 	return &business, nil
 }
 
@@ -534,33 +557,48 @@ func (s *DBService) GetBusinesses() ([]models.Business, error) {
 // SaveClient saves a client to the database
 func (s *DBService) SaveClient(client *models.Client) error {
 	// No validation for VAT ID - accept as provided
+	s.logger.Debug("SaveClient called with client: %+v", client)
+
+	// Ensure created_date is not nil
+	if client.CreatedDate == nil {
+		now := time.Now()
+		client.CreatedDate = &now
+		s.logger.Debug("Created date was nil, using current time: %v", now)
+	}
 
 	if client.ID == 0 {
 		// Insert new client
+		s.logger.Debug("Inserting new client: %s", client.Name)
 		result, err := s.db.Exec(`
 			INSERT INTO clients (name, address, city, postal_code, country, vat_id, created_date, deleted)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, boolToInt(client.Deleted))
 		if err != nil {
+			s.logger.Error("Failed to insert client: %v", err)
 			return err
 		}
 
 		id, err := result.LastInsertId()
 		if err != nil {
+			s.logger.Error("Failed to get last insert ID: %v", err)
 			return err
 		}
 
 		client.ID = int(id)
+		s.logger.Info("Successfully inserted client with ID: %d", client.ID)
 	} else {
 		// Update existing client
+		s.logger.Debug("Updating existing client with ID: %d", client.ID)
 		_, err := s.db.Exec(`
 			UPDATE clients
 			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, created_date = ?, deleted = ?
 			WHERE id = ?
 		`, client.Name, client.Address, client.City, client.PostalCode, client.Country, client.VatID, client.CreatedDate, boolToInt(client.Deleted), client.ID)
 		if err != nil {
+			s.logger.Error("Failed to update client: %v", err)
 			return err
 		}
+		s.logger.Info("Successfully updated client with ID: %d", client.ID)
 	}
 
 	return nil
@@ -568,6 +606,10 @@ func (s *DBService) SaveClient(client *models.Client) error {
 
 // GetClient retrieves a client from the database
 func (s *DBService) GetClient(id int) (*models.Client, error) {
+	// Create a context with timeout for database operations
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	s.logger.Info("Fetching client with ID: %d from database", id)
 
 	var client models.Client
@@ -578,7 +620,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 	`
 
 	s.logger.Debug("Executing query: %s with ID: %d", query, id)
-	err := s.db.QueryRow(query, id).Scan(
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&client.ID,
 		&client.Name,
 		&client.Address,
@@ -599,7 +641,7 @@ func (s *DBService) GetClient(id int) (*models.Client, error) {
 		return nil, err
 	}
 
-	s.logger.Info("Successfully fetched client: %s (ID: %d)", client.Name, client.ID)
+	s.logger.Debug("Successfully fetched client: %s (ID: %d)", client.Name, client.ID)
 	return &client, nil
 }
 
@@ -644,6 +686,10 @@ func (s *DBService) DeleteClient(id int) error {
 func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceItem) error {
 	s.logger.Info("Starting transaction to save invoice")
 
+	// Create a context with timeout for database operations
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	// Ensure the invoice_items table exists
 	if err := s.EnsureInvoiceItemsTable(); err != nil {
 		s.logger.Error("Failed to ensure invoice_items table exists: %v", err)
@@ -651,7 +697,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 	}
 
 	// Start a transaction
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		s.logger.Error("Failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -685,7 +731,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 
 		// Count existing invoices for this year
 		var count int
-		err := s.db.QueryRow("SELECT COUNT(*) FROM invoices WHERE strftime('%Y', issue_date) = ?",
+		err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM invoices WHERE strftime('%Y', issue_date) = ?",
 			strconv.Itoa(currentYear)).Scan(&count)
 		if err != nil {
 			s.logger.Error("Failed to count invoices for year %d: %v", currentYear, err)
@@ -706,7 +752,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 			invoice.ClientID, invoice.BusinessID, invoice.IssueDate.Format("2006-01-02"),
 			invoice.DueDate.Format("2006-01-02"), invoice.TotalAmount, invoice.Currency)
 
-		result, err := tx.Exec(`
+		result, err := tx.ExecContext(ctx, `
 			INSERT INTO invoices (invoice_number, business_id, client_id, issue_date, due_date, hourly_rate, hours_worked, total_amount, vat_rate, vat_amount, reverse_charge_vat, currency, notes, status)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, invoice.InvoiceNumber, invoice.BusinessID, invoice.ClientID, invoice.IssueDate.Format("2006-01-02"), invoice.DueDate.Format("2006-01-02"),
@@ -726,7 +772,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 	} else {
 		// Update existing invoice
 		s.logger.Info("Updating existing invoice with ID: %d", invoice.ID)
-		_, err := tx.Exec(`
+		_, err := tx.ExecContext(ctx, `
 			UPDATE invoices
 			SET invoice_number = ?, business_id = ?, client_id = ?, issue_date = ?, due_date = ?, hourly_rate = ?, hours_worked = ?, total_amount = ?, vat_rate = ?, vat_amount = ?, reverse_charge_vat = ?, currency = ?, notes = ?, status = ?
 			WHERE id = ?
@@ -739,7 +785,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 
 		// Delete existing items
 		s.logger.Info("Deleting existing invoice items for invoice ID: %d", invoice.ID)
-		_, err = tx.Exec(`DELETE FROM invoice_items WHERE invoice_id = ?`, invoice.ID)
+		_, err = tx.ExecContext(ctx, `DELETE FROM invoice_items WHERE invoice_id = ?`, invoice.ID)
 		if err != nil {
 			s.logger.Error("Failed to delete existing invoice items: %v", err)
 			return fmt.Errorf("failed to delete existing invoice items: %w", err)
@@ -750,7 +796,7 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 	s.logger.Info("Inserting %d invoice items", len(items))
 	for i := range items {
 		items[i].InvoiceID = invoice.ID
-		_, err := tx.Exec(`
+		_, err := tx.ExecContext(ctx, `
 			INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, amount)
 			VALUES (?, ?, ?, ?, ?)
 		`, items[i].InvoiceID, items[i].Description, items[i].Quantity, items[i].UnitPrice, items[i].Amount)
@@ -772,69 +818,107 @@ func (s *DBService) SaveInvoice(invoice *models.Invoice, items []models.InvoiceI
 
 // GetInvoice retrieves an invoice from the database
 func (s *DBService) GetInvoice(id int) (*models.Invoice, []models.InvoiceItem, error) {
+	// Create a context with timeout for database operations
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	s.logger.Info("Fetching invoice with ID: %d", id)
+
 	// Get invoice
 	var invoice models.Invoice
 	var issueDate, dueDate string
 	var reverseChargeVat int
 	var currency sql.NullString // Use sql.NullString to handle NULL values
 
-	err := s.db.QueryRow(`
+	err := s.db.QueryRowContext(ctx, `
 		SELECT id, invoice_number, business_id, client_id, issue_date, due_date, hourly_rate, hours_worked, total_amount, vat_rate, vat_amount, reverse_charge_vat, currency, notes, status
 		FROM invoices
 		WHERE id = ?
 	`, id).Scan(
-		&invoice.ID, &invoice.InvoiceNumber, &invoice.BusinessID, &invoice.ClientID, &issueDate, &dueDate,
-		&invoice.HourlyRate, &invoice.HoursWorked, &invoice.TotalAmount, &invoice.VatRate, &invoice.VatAmount,
-		&reverseChargeVat, &currency, &invoice.Notes, &invoice.Status,
+		&invoice.ID,
+		&invoice.InvoiceNumber,
+		&invoice.BusinessID,
+		&invoice.ClientID,
+		&issueDate,
+		&dueDate,
+		&invoice.HourlyRate,
+		&invoice.HoursWorked,
+		&invoice.TotalAmount,
+		&invoice.VatRate,
+		&invoice.VatAmount,
+		&reverseChargeVat,
+		&currency,
+		&invoice.Notes,
+		&invoice.Status,
 	)
+
 	if err != nil {
+		if err == sql.ErrNoRows {
+			s.logger.Warn("No invoice found with ID: %d", id)
+		} else {
+			s.logger.Error("Database error when fetching invoice ID %d: %v", id, err)
+		}
 		return nil, nil, err
 	}
 
 	// Parse dates
 	invoice.IssueDate, err = time.Parse("2006-01-02", issueDate)
 	if err != nil {
-		return nil, nil, err
+		s.logger.Error("Failed to parse issue date: %v", err)
+		return nil, nil, fmt.Errorf("failed to parse issue date: %w", err)
 	}
 
 	invoice.DueDate, err = time.Parse("2006-01-02", dueDate)
 	if err != nil {
-		return nil, nil, err
+		s.logger.Error("Failed to parse due date: %v", err)
+		return nil, nil, fmt.Errorf("failed to parse due date: %w", err)
 	}
 
-	// Convert reverse charge VAT from int to bool
+	// Convert reverseChargeVat to bool
 	invoice.ReverseChargeVat = intToBool(reverseChargeVat)
 
-	// Set currency, default to EUR if NULL
+	// Handle currency
 	if currency.Valid {
 		invoice.Currency = currency.String
 	} else {
-		invoice.Currency = "EUR"
+		invoice.Currency = "EUR" // Default to EUR if NULL
 	}
 
 	// Get invoice items
-	rows, err := s.db.Query(`
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, invoice_id, description, quantity, unit_price, amount
 		FROM invoice_items
 		WHERE invoice_id = ?
 	`, id)
 	if err != nil {
-		return nil, nil, err
+		s.logger.Error("Failed to fetch invoice items: %v", err)
+		return nil, nil, fmt.Errorf("failed to fetch invoice items: %w", err)
 	}
 	defer rows.Close()
 
 	var items []models.InvoiceItem
 	for rows.Next() {
 		var item models.InvoiceItem
-		err := rows.Scan(
-			&item.ID, &item.InvoiceID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Amount,
-		)
-		if err != nil {
-			return nil, nil, err
+		if err := rows.Scan(
+			&item.ID,
+			&item.InvoiceID,
+			&item.Description,
+			&item.Quantity,
+			&item.UnitPrice,
+			&item.Amount,
+		); err != nil {
+			s.logger.Error("Failed to scan invoice item: %v", err)
+			return nil, nil, fmt.Errorf("failed to scan invoice item: %w", err)
 		}
 		items = append(items, item)
 	}
 
+	if err := rows.Err(); err != nil {
+		s.logger.Error("Error iterating invoice items: %v", err)
+		return nil, nil, fmt.Errorf("error iterating invoice items: %w", err)
+	}
+
+	s.logger.Info("Successfully fetched invoice #%s with %d items", invoice.InvoiceNumber, len(items))
 	return &invoice, items, nil
 }
 
@@ -1008,5 +1092,62 @@ func RemoveDatabase(dataDir string, logger *Logger) error {
 	}
 
 	logger.Info("Database files removed successfully")
+	return nil
+}
+
+// GetDB returns the database connection
+func (s *DBService) GetDB() *sql.DB {
+	return s.db
+}
+
+// ReopenConnection reopens the database connection
+func (s *DBService) ReopenConnection() error {
+	s.logger.Info("Reopening database connection...")
+
+	// Close the existing connection if it's still open
+	if s.db != nil {
+		if err := s.db.Close(); err != nil {
+			s.logger.Warn("Error closing existing database connection: %v", err)
+			// Continue anyway to try to reopen
+		}
+	}
+
+	// Open database
+	dbPath := filepath.Join(s.dataDir, "database.db")
+	s.logger.Debug("Database path: %s", dbPath)
+
+	// Use a connection with strict timeout and no journal
+	s.logger.Debug("Opening database connection with timeout")
+	db, err := sql.Open("sqlite3", dbPath+"?_timeout=5000&_journal=DELETE")
+	if err != nil {
+		s.logger.Error("Failed to open database: %v", err)
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Set connection parameters
+	db.SetMaxOpenConns(1) // Restrict to a single connection to avoid locks
+	db.SetConnMaxLifetime(30 * time.Second)
+	db.SetMaxIdleConns(1)
+
+	// Verify connection with timeout
+	s.logger.Debug("Verifying database connection")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		s.logger.Error("Failed to ping database: %v", err)
+		return fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Initialize the database schema
+	s.db = db
+	if err := s.initDB(); err != nil {
+		s.db.Close()
+		s.logger.Error("Failed to initialize database schema: %v", err)
+		return fmt.Errorf("failed to initialize database schema: %w", err)
+	}
+
+	s.logger.Info("Database connection reopened successfully")
 	return nil
 }

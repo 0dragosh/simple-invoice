@@ -21,7 +21,7 @@
             </div>
             <div class="col-md-6 text-end">
                 {{if .Business.LogoPath}}
-                <img src="/data/images/{{filepath.Base .Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
+                <img src="/data/images/{{.Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
                 {{end}}
             </div>
         </div>
@@ -200,9 +200,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     downloadLink.id = 'direct-download-link';
                     downloadLink.href = pdfUrl;
                     downloadLink.target = '_blank';
-                    downloadLink.className = 'btn btn-info mt-2';
+                    downloadLink.className = 'btn btn-info';
                     downloadLink.textContent = 'Download PDF';
-                    downloadLink.style.display = 'block';
+                    downloadLink.style.display = 'inline-block';
+                    downloadLink.style.marginLeft = '5px';
                     
                     // Add the link after the button
                     generatePdfBtn.parentNode.appendChild(downloadLink);

@@ -17,6 +17,7 @@ A simple invoicing application for consultants built with Go. All invoice applic
   - Swiss Franc (CHF)
 - Automatic currency selection based on client's country
 - Create and manage invoices
+- Automated database backups and restoration
 
 ## Setup
 
@@ -37,6 +38,11 @@ services:
       - DATA_DIR=/app/data
       - COMPANIES_HOUSE_API_KEY=${COMPANIES_HOUSE_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Choose one of the backup schedules below:
+      - BACKUP_CRON=0 2 * * *  # Daily at 2 AM
+      # - BACKUP_CRON=0 0 * * 0  # Weekly on Sunday at midnight
+      # - BACKUP_CRON=0 0 1 * *  # Monthly on the 1st at midnight
+      # - BACKUP_CRON=0 */12 * * *  # Every 12 hours
     restart: unless-stopped 
 ```
 
@@ -58,6 +64,7 @@ services:
 - `DATA_DIR`: The directory to store data in (default: /app/data)
 - `COMPANIES_HOUSE_API_KEY`: Companies House API key (optional, required only for UK company lookups)
 - `LOG_LEVEL`: Logging level (DEBUG, INFO, WARN, ERROR, FATAL) (default: INFO)
+- `BACKUP_CRON`: Schedule for automatic backups using cron syntax (e.g., "0 0 * * *" for daily at midnight)
 
 ### Data Directory Structure
 
@@ -65,6 +72,7 @@ All persistent data is stored in the `/app/data` directory:
 
 - `/app/data/images`: Logo images (optional)
 - `/app/data/pdfs`: Generated PDF invoices
+- `/app/data/backups`: Database and file backups
 - `/app/data/simple-invoice.db`: SQLite database
 
 ## Usage
@@ -88,6 +96,55 @@ The application supports VAT ID validation and company information retrieval for
    - Without this API key, UK company lookups will not work
 
 Note: UK VAT numbers cannot be automatically validated through the application. Users will need to manually enter the VAT ID for UK companies.
+
+### Backup and Restore
+
+The application includes a comprehensive backup and restore system:
+
+1. **Automatic Scheduled Backups**:
+   - Configure using the `BACKUP_CRON` environment variable
+   - Uses standard cron syntax (examples below)
+   - Backups are stored in the `/app/data/backups` directory
+
+2. **Manual Backup Management**:
+   - Access the Backups page from the main navigation
+   - Create backups on demand
+   - View, restore, or delete existing backups
+
+3. **Backup Contents**:
+   - Database (SQLite)
+   - Images (logos)
+   - Generated PDFs
+
+#### Docker Compose Example with Backup Schedule
+
+```yaml
+services:
+  simple-invoice:
+    image: ghcr.io/0dragosh/simple-invoice:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=8080
+      - DATA_DIR=/app/data
+      - LOG_LEVEL=INFO
+      # Choose one of the backup schedules below:
+      - BACKUP_CRON=0 2 * * *  # Daily at 2 AM
+      # - BACKUP_CRON=0 0 * * 0  # Weekly on Sunday at midnight
+      # - BACKUP_CRON=0 0 1 * *  # Monthly on the 1st at midnight
+      # - BACKUP_CRON=0 */12 * * *  # Every 12 hours
+    restart: unless-stopped
+```
+
+#### BACKUP_CRON Examples
+
+- `0 0 * * *` - Daily at midnight
+- `0 0 * * 0` - Weekly on Sunday at midnight
+- `0 0 1 * *` - Monthly on the 1st at midnight
+- `0 12 * * 1-5` - Weekdays at noon
+- `0 */6 * * *` - Every 6 hours
 
 ## Development
 
