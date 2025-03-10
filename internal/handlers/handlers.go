@@ -964,6 +964,7 @@ func (h *AppHandler) GeneratePDFHandler(w http.ResponseWriter, r *http.Request) 
 // UploadLogoHandler handles logo uploads
 func (h *AppHandler) UploadLogoHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		h.logger.Warn("Method not allowed for logo upload: %s", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -971,63 +972,107 @@ func (h *AppHandler) UploadLogoHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse the multipart form
 	err := r.ParseMultipartForm(10 << 20) // 10 MB max
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Error("Failed to parse multipart form: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	// Get the file from the form
 	file, handler, err := r.FormFile("logo")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Error("Failed to get logo file from form: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get logo file: %v", err), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
+	h.logger.Debug("Received logo upload: %s, size: %d bytes, content type: %s",
+		handler.Filename, handler.Size, handler.Header.Get("Content-Type"))
+
+	// Validate file type
+	contentType := handler.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		h.logger.Error("Invalid file type: %s", contentType)
+		http.Error(w, "Invalid file type. Only images are allowed.", http.StatusBadRequest)
+		return
+	}
+
 	// Create the uploads directory if it doesn't exist
 	uploadsDir := filepath.Join(h.dataDir, "images")
+	h.logger.Debug("Ensuring uploads directory exists: %s", uploadsDir)
 	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to create uploads directory: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create uploads directory: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Create a new file in the uploads directory
 	filename := filepath.Join(uploadsDir, handler.Filename)
+	h.logger.Debug("Creating destination file: %s", filename)
 	dst, err := os.Create(filename)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to create destination file: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create destination file: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer dst.Close()
 
 	// Copy the uploaded file to the destination file
-	_, err = dst.ReadFrom(file)
+	h.logger.Debug("Copying uploaded file to destination")
+	bytesWritten, err := io.Copy(dst, file)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to copy uploaded file: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to save uploaded file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("Successfully saved logo to: %s (%d bytes written)", filename, bytesWritten)
+
+	// Verify the file exists and is readable
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		h.logger.Error("File was not saved correctly: %v", err)
+		http.Error(w, "Failed to save logo file", http.StatusInternalServerError)
 		return
 	}
 
 	// Update the business logo path
 	businesses, err := h.dbService.GetBusinesses()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to get businesses: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to get business details: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	if len(businesses) > 0 {
 		business := businesses[0]
-		business.LogoPath = filename
+		// Store only the filename, not the full path
+		business.LogoPath = filepath.Base(handler.Filename)
+		h.logger.Debug("Updating business with logo path: %s", business.LogoPath)
 		if err := h.dbService.SaveBusiness(&business); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			h.logger.Error("Failed to save business with logo: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to update business with logo: %v", err), http.StatusInternalServerError)
 			return
 		}
+		h.logger.Info("Updated business with logo path: %s", business.LogoPath)
+	} else {
+		h.logger.Warn("No business found to update with logo")
 	}
 
+	// Return success response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	response := map[string]string{
 		"filename": handler.Filename,
 		"path":     filename,
-		"url":      "/data/images/" + handler.Filename,
-	})
+		"url":      "/data/images/" + filepath.Base(handler.Filename),
+		"message":  "Logo uploaded successfully",
+	}
+	h.logger.Debug("Sending logo upload response: %v", response)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 }
 
 // InvoiceByIDHandler handles operations on a specific invoice by ID

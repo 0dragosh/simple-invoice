@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('logo', logoInput.files[0]);
 
-        return fetch('/api/upload-logo', {
+        return fetch('/api/upload/logo', {
             method: 'POST',
             body: formData
         })
