@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Build the application specifically for AMD64
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o simple-invoice ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o server ./cmd/server
 
 # Final stage
 FROM --platform=linux/amd64 alpine:3.21.3
@@ -29,8 +29,8 @@ RUN addgroup -g 2000 -S invoice && adduser -u 2000 -S invoice -G invoice
 
 WORKDIR /app
 
-# Copy the binary from the builder stage and rename it to server
-COPY --from=builder /app/simple-invoice ./server
+# Copy the binary from the builder stage directly with the correct name
+COPY --from=builder /app/server .
 
 # Copy templates
 COPY --from=builder /app/internal/templates /app/internal/templates
@@ -55,7 +55,7 @@ VOLUME ["/app/data"]
 # Switch to non-root user using numeric ID for Kubernetes compatibility
 USER 2000
 
-# Run the application
-CMD ["./server"]
+# Run the application with absolute path
+CMD ["/app/server"]
 
 LABEL org.opencontainers.image.source=https://github.com/0dragosh/simple-invoice
