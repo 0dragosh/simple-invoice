@@ -124,6 +124,23 @@ func (h *AppHandler) RestoreBackupHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Check if the database needs to be reopened
+	if h.backupService.NeedsReopen() {
+		h.logger.Info("Database needs to be reopened after restore")
+
+		// Reopen the database connection
+		if err := h.dbService.ReopenConnection(); err != nil {
+			h.logger.Error("Failed to reopen database connection: %v", err)
+			http.Error(w, fmt.Sprintf("Backup restored but failed to reopen database connection: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Mark the database as reopened
+		h.backupService.SetReopened()
+
+		h.logger.Info("Database connection reopened successfully")
+	}
+
 	h.logger.Info("Backup restored successfully: %s", filename)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Backup restored successfully"})
 }

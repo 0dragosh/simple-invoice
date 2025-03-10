@@ -1099,3 +1099,55 @@ func RemoveDatabase(dataDir string, logger *Logger) error {
 func (s *DBService) GetDB() *sql.DB {
 	return s.db
 }
+
+// ReopenConnection reopens the database connection
+func (s *DBService) ReopenConnection() error {
+	s.logger.Info("Reopening database connection...")
+
+	// Close the existing connection if it's still open
+	if s.db != nil {
+		if err := s.db.Close(); err != nil {
+			s.logger.Warn("Error closing existing database connection: %v", err)
+			// Continue anyway to try to reopen
+		}
+	}
+
+	// Open database
+	dbPath := filepath.Join(s.dataDir, "database.db")
+	s.logger.Debug("Database path: %s", dbPath)
+
+	// Use a connection with strict timeout and no journal
+	s.logger.Debug("Opening database connection with timeout")
+	db, err := sql.Open("sqlite3", dbPath+"?_timeout=5000&_journal=DELETE")
+	if err != nil {
+		s.logger.Error("Failed to open database: %v", err)
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Set connection parameters
+	db.SetMaxOpenConns(1) // Restrict to a single connection to avoid locks
+	db.SetConnMaxLifetime(30 * time.Second)
+	db.SetMaxIdleConns(1)
+
+	// Verify connection with timeout
+	s.logger.Debug("Verifying database connection")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		s.logger.Error("Failed to ping database: %v", err)
+		return fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Initialize the database schema
+	s.db = db
+	if err := s.initDB(); err != nil {
+		s.db.Close()
+		s.logger.Error("Failed to initialize database schema: %v", err)
+		return fmt.Errorf("failed to initialize database schema: %w", err)
+	}
+
+	s.logger.Info("Database connection reopened successfully")
+	return nil
+}

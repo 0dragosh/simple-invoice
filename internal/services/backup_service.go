@@ -17,11 +17,12 @@ import (
 
 // BackupService provides methods for backing up and restoring the database
 type BackupService struct {
-	db        *sql.DB
-	dataDir   string
-	backupDir string
-	logger    *Logger
-	cron      *cron.Cron
+	db          *sql.DB
+	dataDir     string
+	backupDir   string
+	logger      *Logger
+	cron        *cron.Cron
+	needsReopen bool
 }
 
 // BackupInfo represents information about a backup file
@@ -107,61 +108,44 @@ func (s *BackupService) CreateBackup() error {
 	tarWriter := tar.NewWriter(gzipWriter)
 	defer tarWriter.Close()
 
-	// Backup the database
-	dbPath := filepath.Join(s.dataDir, "simple-invoice.db")
-	s.logger.Debug("Database path: %s", dbPath)
+	// Add database file to the archive
+	dbPath := filepath.Join(s.dataDir, "database.db")
 
-	// Create a temporary copy of the database to ensure consistency
-	tempDbPath := filepath.Join(s.dataDir, "temp-backup.db")
+	// Check if the database file exists
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		s.logger.Warn("Database file not found at %s, checking for simple-invoice.db", dbPath)
 
-	// Ensure the database is in a consistent state for backup
-	_, err = s.db.Exec("PRAGMA wal_checkpoint(FULL)")
-	if err != nil {
-		s.logger.Warn("Failed to checkpoint WAL: %v", err)
+		// Try with the old name
+		dbPath = filepath.Join(s.dataDir, "simple-invoice.db")
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			return fmt.Errorf("database file not found")
+		}
 	}
 
-	// Create a backup of the database
-	backupDb, err := sql.Open("sqlite3", tempDbPath)
-	if err != nil {
-		return fmt.Errorf("failed to open temporary database: %w", err)
-	}
-	defer backupDb.Close()
-
-	// Use SQLite's backup API via SQL
-	_, err = s.db.Exec("VACUUM INTO ?", tempDbPath)
-	if err != nil {
-		os.Remove(tempDbPath)
-		return fmt.Errorf("failed to create database backup: %w", err)
+	s.logger.Debug("Adding database file to backup: %s", dbPath)
+	if err := addFileToTar(tarWriter, dbPath, "database.db"); err != nil {
+		return fmt.Errorf("failed to add database file to backup: %w", err)
 	}
 
-	// Add the database file to the tar archive
-	if err := addFileToTar(tarWriter, tempDbPath, "simple-invoice.db"); err != nil {
-		os.Remove(tempDbPath)
-		return fmt.Errorf("failed to add database to backup: %w", err)
-	}
-
-	// Add images directory if it exists
+	// Add images directory to the archive if it exists
 	imagesDir := filepath.Join(s.dataDir, "images")
 	if _, err := os.Stat(imagesDir); err == nil {
+		s.logger.Debug("Adding images directory to backup: %s", imagesDir)
 		if err := addDirectoryToTar(tarWriter, imagesDir, "images"); err != nil {
-			os.Remove(tempDbPath)
-			return fmt.Errorf("failed to add images to backup: %w", err)
+			s.logger.Warn("Failed to add images directory to backup: %v", err)
 		}
 	}
 
-	// Add PDFs directory if it exists
+	// Add PDFs directory to the archive if it exists
 	pdfsDir := filepath.Join(s.dataDir, "pdfs")
 	if _, err := os.Stat(pdfsDir); err == nil {
+		s.logger.Debug("Adding PDFs directory to backup: %s", pdfsDir)
 		if err := addDirectoryToTar(tarWriter, pdfsDir, "pdfs"); err != nil {
-			os.Remove(tempDbPath)
-			return fmt.Errorf("failed to add PDFs to backup: %w", err)
+			s.logger.Warn("Failed to add PDFs directory to backup: %v", err)
 		}
 	}
 
-	// Clean up temporary database file
-	os.Remove(tempDbPath)
-
-	s.logger.Info("Backup created successfully: %s", backupPath)
+	s.logger.Info("Backup created successfully: %s", backupFilename)
 	return nil
 }
 
@@ -280,8 +264,17 @@ func (s *BackupService) RestoreBackup(backupFilename string) error {
 	}
 
 	// Replace the database file
-	dbPath := filepath.Join(s.dataDir, "simple-invoice.db")
-	extractedDbPath := filepath.Join(tempDir, "simple-invoice.db")
+	dbPath := filepath.Join(s.dataDir, "database.db")
+	extractedDbPath := filepath.Join(tempDir, "database.db")
+
+	// Check if the extracted database file exists
+	if _, err := os.Stat(extractedDbPath); os.IsNotExist(err) {
+		// Try with the old name (simple-invoice.db)
+		extractedDbPath = filepath.Join(tempDir, "simple-invoice.db")
+		if _, err := os.Stat(extractedDbPath); os.IsNotExist(err) {
+			return fmt.Errorf("database file not found in backup")
+		}
+	}
 
 	// Backup the current database just in case
 	currentBackupPath := filepath.Join(s.dataDir, "pre-restore-backup.db")
@@ -319,7 +312,21 @@ func (s *BackupService) RestoreBackup(backupFilename string) error {
 	}
 
 	s.logger.Info("Database restored successfully from backup: %s", backupFilename)
+
+	// Set a flag to indicate that the database needs to be reopened
+	s.needsReopen = true
+
 	return nil
+}
+
+// NeedsReopen returns true if the database connection needs to be reopened
+func (s *BackupService) NeedsReopen() bool {
+	return s.needsReopen
+}
+
+// SetReopened marks the database as reopened
+func (s *BackupService) SetReopened() {
+	s.needsReopen = false
 }
 
 // Helper functions
