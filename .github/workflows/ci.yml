@@ -6,6 +6,7 @@ on:
     - main
     - develop
     - 'feature/**'
+    - 'renovate/**'
     tags:
     - 'v*'
   pull_request:
