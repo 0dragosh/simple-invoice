@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
       tags:
         - ghcr.io/0dragosh/simple-invoice:develop
+      args:
+        - VERSION=${VERSION:-develop}
     ports:
       - "8080:8080"
     volumes:
@@ -14,4 +16,5 @@ services:
       - DATA_DIR=/app/data
       - COMPANIES_HOUSE_API_KEY=${COMPANIES_HOUSE_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      - APP_VERSION=${VERSION:-develop}
     restart: unless-stopped 

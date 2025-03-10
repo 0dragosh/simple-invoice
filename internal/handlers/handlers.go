@@ -28,6 +28,7 @@ type AppHandler struct {
 	templates     map[string]*template.Template
 	dataDir       string
 	logger        *services.Logger
+	version       string
 }
 
 // NewAppHandler creates a new AppHandler
@@ -64,6 +65,13 @@ func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error)
 		return nil, fmt.Errorf("failed to parse templates: %w", err)
 	}
 
+	// Get version from environment variable or use default
+	version := os.Getenv("APP_VERSION")
+	if version == "" {
+		version = "v1.5.3" // Default version if not specified
+	}
+	logger.Info("Starting application version: %s", version)
+
 	return &AppHandler{
 		dbService:     dbService,
 		vatService:    vatService,
@@ -72,6 +80,7 @@ func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error)
 		templates:     templates,
 		dataDir:       dataDir,
 		logger:        logger,
+		version:       version,
 	}, nil
 }
 
@@ -1112,6 +1121,17 @@ func (h *AppHandler) renderTemplate(w http.ResponseWriter, tmpl string, data map
 		http.Error(w, fmt.Sprintf("Template not found: %s", tmpl), http.StatusInternalServerError)
 		return
 	}
+
+	// Add common data
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+
+	// Add current year for copyright
+	data["CurrentYear"] = time.Now().Year()
+
+	// Add version information
+	data["Version"] = h.version
 
 	// Render the template
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
