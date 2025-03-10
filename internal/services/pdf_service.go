@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/0dragosh/simple-invoice/internal/models"
 	"github.com/jung-kurt/gofpdf/v2"
@@ -165,17 +166,73 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	if business.LogoPath != "" {
 		useColors = true
 		// Extract colors from logo if available
-		logoPath := filepath.Join(s.dataDir, "images", business.LogoPath)
-		var err error
-		theme, err = ExtractColorsFromImage(logoPath)
-		if err != nil {
-			// Use default colors if extraction fails
-			theme = ThemeColors{
-				Primary:   color.RGBA{R: 0, G: 150, B: 136, A: 255},  // Teal
-				Secondary: color.RGBA{R: 255, G: 111, B: 97, A: 255}, // Coral accent
+		var logoPath string
+		// Check if the logo path already includes the data directory
+		if strings.HasPrefix(business.LogoPath, s.dataDir) {
+			// Logo path already includes the data directory
+			logoPath = business.LogoPath
+		} else if strings.HasPrefix(business.LogoPath, "/app/data") {
+			// Logo path includes the container data directory
+			// Extract just the filename
+			logoPath = filepath.Join(s.dataDir, "images", filepath.Base(business.LogoPath))
+		} else {
+			// Logo path is just the filename
+			logoPath = filepath.Join(s.dataDir, "images", business.LogoPath)
+		}
+
+		fmt.Printf("Checking for logo at path: %s\n", logoPath)
+		if fileExists(logoPath) {
+			fmt.Printf("Logo file exists, extracting colors\n")
+			var err error
+			theme, err = ExtractColorsFromImage(logoPath)
+			if err != nil {
+				fmt.Printf("Failed to extract colors from logo: %v\n", err)
+				// Use default colors if extraction fails
+				theme = ThemeColors{
+					Primary:   color.RGBA{R: 0, G: 150, B: 136, A: 255},  // Teal
+					Secondary: color.RGBA{R: 255, G: 111, B: 97, A: 255}, // Coral accent
+				}
+			}
+		} else {
+			fmt.Printf("Logo file does not exist at path: %s\n", logoPath)
+			// Try alternative paths
+			alternativePaths := []string{
+				filepath.Join(s.dataDir, "images", filepath.Base(business.LogoPath)),
+				filepath.Join("/app/data/images", filepath.Base(business.LogoPath)),
+				business.LogoPath,
+			}
+
+			for _, altPath := range alternativePaths {
+				if altPath != logoPath {
+					fmt.Printf("Trying alternative path: %s\n", altPath)
+					if fileExists(altPath) {
+						logoPath = altPath
+						fmt.Printf("Found logo at alternative path: %s\n", logoPath)
+						var err error
+						theme, err = ExtractColorsFromImage(logoPath)
+						if err != nil {
+							fmt.Printf("Failed to extract colors from logo: %v\n", err)
+							// Use default colors if extraction fails
+							theme = ThemeColors{
+								Primary:   color.RGBA{R: 0, G: 150, B: 136, A: 255},  // Teal
+								Secondary: color.RGBA{R: 255, G: 111, B: 97, A: 255}, // Coral accent
+							}
+						}
+						break
+					}
+				}
+			}
+
+			if !fileExists(logoPath) {
+				// Use default colors if logo file doesn't exist
+				theme = ThemeColors{
+					Primary:   color.RGBA{R: 0, G: 150, B: 136, A: 255},  // Teal
+					Secondary: color.RGBA{R: 255, G: 111, B: 97, A: 255}, // Coral accent
+				}
 			}
 		}
 	} else {
+		fmt.Printf("No logo path specified for business\n")
 		// Default black/gray colors when no logo
 		theme = ThemeColors{
 			Primary:   color.RGBA{R: 50, G: 50, B: 50, A: 255},
@@ -189,9 +246,46 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 
 	// Add logo if available
 	if business.LogoPath != "" {
-		logoPath := filepath.Join(s.dataDir, "images", business.LogoPath)
+		var logoPath string
+		// Check if the logo path already includes the data directory
+		if strings.HasPrefix(business.LogoPath, s.dataDir) {
+			// Logo path already includes the data directory
+			logoPath = business.LogoPath
+		} else if strings.HasPrefix(business.LogoPath, "/app/data") {
+			// Logo path includes the container data directory
+			// Extract just the filename
+			logoPath = filepath.Join(s.dataDir, "images", filepath.Base(business.LogoPath))
+		} else {
+			// Logo path is just the filename
+			logoPath = filepath.Join(s.dataDir, "images", business.LogoPath)
+		}
+
+		fmt.Printf("Adding logo to PDF from path: %s\n", logoPath)
 		if fileExists(logoPath) {
+			fmt.Printf("Logo file exists, adding to PDF\n")
 			pdf.Image(logoPath, 15, 15, 40, 0, false, "", 0, "")
+		} else {
+			// Try alternative paths
+			alternativePaths := []string{
+				filepath.Join(s.dataDir, "images", filepath.Base(business.LogoPath)),
+				filepath.Join("/app/data/images", filepath.Base(business.LogoPath)),
+				business.LogoPath,
+			}
+
+			for _, altPath := range alternativePaths {
+				if altPath != logoPath {
+					fmt.Printf("Trying alternative path for logo: %s\n", altPath)
+					if fileExists(altPath) {
+						fmt.Printf("Found logo at alternative path, adding to PDF: %s\n", altPath)
+						pdf.Image(altPath, 15, 15, 40, 0, false, "", 0, "")
+						break
+					}
+				}
+			}
+
+			if !fileExists(logoPath) {
+				fmt.Printf("Logo file does not exist at path: %s, skipping logo\n", logoPath)
+			}
 		}
 	}
 
@@ -480,8 +574,31 @@ func hexToB(h string) int {
 	return ret
 }
 
-// fileExists checks if a file exists
+// fileExists checks if a file exists and is accessible
 func fileExists(filename string) bool {
-	_, err := os.Stat(filename)
-	return err == nil
+	info, err := os.Stat(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("File does not exist: %s\n", filename)
+		} else {
+			fmt.Printf("Error checking file: %s - %v\n", filename, err)
+		}
+		return false
+	}
+
+	if info.IsDir() {
+		fmt.Printf("Path is a directory, not a file: %s\n", filename)
+		return false
+	}
+
+	// Check if file is readable
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("File exists but cannot be opened: %s - %v\n", filename, err)
+		return false
+	}
+	file.Close()
+
+	fmt.Printf("File exists and is accessible: %s (size: %d bytes)\n", filename, info.Size())
+	return true
 }
