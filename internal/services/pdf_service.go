@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/0dragosh/simple-invoice/internal/models"
-	"github.com/jung-kurt/gofpdf"
+	"github.com/jung-kurt/gofpdf/v2"
 )
 
 // PDFService provides methods for generating PDF invoices
