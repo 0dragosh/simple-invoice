@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM --platform=linux/amd64 golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev
@@ -15,11 +15,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -a -o simple-invoice ./cmd/server
+# Build the application specifically for AMD64
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o simple-invoice ./cmd/server
 
 # Final stage
-FROM alpine:3.21.3
+FROM --platform=linux/amd64 alpine:3.21.3
 
 # Install required dependencies for SQLite
 RUN apk --no-cache add ca-certificates tzdata sqlite
@@ -38,7 +38,8 @@ COPY --from=builder /app/internal/templates /app/internal/templates
 # Create directory with correct permissions
 RUN mkdir -p /app/data/images && \
     chown -R 2000:2000 /app/data && \
-    chmod -R 755 /app/data
+    chmod -R 755 /app/data && \
+    chmod +x /app/server
 
 # Expose port
 EXPOSE 8080
@@ -55,6 +56,6 @@ VOLUME ["/app/data"]
 USER 2000
 
 # Run the application
-ENTRYPOINT ["/bin/sh", "-c", "./server"]
+CMD ["./server"]
 
 LABEL org.opencontainers.image.source=https://github.com/0dragosh/simple-invoice
