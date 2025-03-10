@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -198,8 +199,13 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 	mux.HandleFunc("/api/backups/restore", handler.RestoreBackupHandler)
 
 	// Register static file handler
-	fileServer := http.FileServer(http.Dir(filepath.Join(dataDir)))
+	fileServer := http.FileServer(http.Dir(dataDir))
 	mux.Handle("/data/", http.StripPrefix("/data/", fileServer))
+
+	// Log the data directory and static file paths
+	logger.Info("Data directory: %s", dataDir)
+	logger.Info("Static files will be served from: %s", dataDir)
+	logger.Info("PDFs will be available at: /data/pdfs/")
 
 	return handler, nil
 }
@@ -775,44 +781,80 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 
 		// Automatically generate PDF for the new invoice
 		go func() {
-			h.logger.Info("Automatically generating PDF for invoice ID: %d", invoice.ID)
+			// Create a context with timeout for PDF generation
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 
-			// Get the necessary data for PDF generation
-			savedInvoice, savedItems, err := h.dbService.GetInvoice(invoice.ID)
-			if err != nil {
-				h.logger.Error("Failed to get invoice for automatic PDF generation: %v", err)
-				return
+			// Create a channel to receive errors
+			errCh := make(chan error, 1)
+
+			// Run PDF generation in a goroutine
+			go func() {
+				h.logger.Info("Automatically generating PDF for invoice ID: %d", invoice.ID)
+
+				// Get the necessary data for PDF generation
+				savedInvoice, savedItems, err := h.dbService.GetInvoice(invoice.ID)
+				if err != nil {
+					h.logger.Error("Failed to get invoice for automatic PDF generation: %v", err)
+					errCh <- fmt.Errorf("failed to get invoice: %w", err)
+					return
+				}
+
+				business, err := h.dbService.GetBusiness(savedInvoice.BusinessID)
+				if err != nil {
+					h.logger.Error("Failed to get business for automatic PDF generation: %v", err)
+					errCh <- fmt.Errorf("failed to get business: %w", err)
+					return
+				}
+
+				client, err := h.dbService.GetClient(savedInvoice.ClientID)
+				if err != nil {
+					h.logger.Error("Failed to get client for automatic PDF generation: %v", err)
+					errCh <- fmt.Errorf("failed to get client: %w", err)
+					return
+				}
+
+				// Ensure the pdfs directory exists
+				pdfsDir := filepath.Join(h.dataDir, "pdfs")
+				if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+					h.logger.Error("Failed to create pdfs directory for automatic generation: %v", err)
+					errCh <- fmt.Errorf("failed to create pdfs directory: %w", err)
+					return
+				}
+
+				// Generate the PDF
+				pdfPath, err := h.pdfService.GenerateInvoice(savedInvoice, business, client, savedItems)
+				if err != nil {
+					h.logger.Error("Failed to automatically generate PDF: %v", err)
+					errCh <- fmt.Errorf("failed to generate PDF: %w", err)
+					return
+				}
+
+				// Verify the file exists and is accessible
+				if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
+					h.logger.Error("Generated PDF file does not exist: %s", pdfPath)
+					errCh <- fmt.Errorf("generated PDF file not found: %s", pdfPath)
+					return
+				}
+
+				// Extract just the filename from the full path
+				pdfFilename := filepath.Base(pdfPath)
+				h.logger.Info("Successfully generated PDF: %s at path: %s", pdfFilename, pdfPath)
+				errCh <- nil
+			}()
+
+			// Wait for either the PDF generation to complete or the context to timeout
+			select {
+			case err := <-errCh:
+				if err != nil {
+					h.logger.Error("PDF generation failed: %v", err)
+				}
+			case <-ctx.Done():
+				h.logger.Error("PDF generation timed out after 30 seconds")
 			}
-
-			business, err := h.dbService.GetBusiness(savedInvoice.BusinessID)
-			if err != nil {
-				h.logger.Error("Failed to get business for automatic PDF generation: %v", err)
-				return
-			}
-
-			client, err := h.dbService.GetClient(savedInvoice.ClientID)
-			if err != nil {
-				h.logger.Error("Failed to get client for automatic PDF generation: %v", err)
-				return
-			}
-
-			// Ensure the pdfs directory exists
-			pdfsDir := filepath.Join(h.dataDir, "pdfs")
-			if err := os.MkdirAll(pdfsDir, 0755); err != nil {
-				h.logger.Error("Failed to create pdfs directory for automatic generation: %v", err)
-				return
-			}
-
-			// Generate the PDF
-			_, err = h.pdfService.GenerateInvoice(savedInvoice, business, client, savedItems)
-			if err != nil {
-				h.logger.Error("Failed to automatically generate PDF: %v", err)
-				return
-			}
-
-			h.logger.Info("Successfully generated PDF for invoice #%s", savedInvoice.InvoiceNumber)
 		}()
 
+		// Return the created invoice to the client
 		json.NewEncoder(w).Encode(invoice)
 
 	default:
@@ -901,10 +943,14 @@ func (h *AppHandler) GeneratePDFHandler(w http.ResponseWriter, r *http.Request) 
 		h.logger.Debug("PDF file permissions: %v, size: %d bytes", fileInfo.Mode(), fileInfo.Size())
 	}
 
+	// Set the correct URL for the PDF file
+	pdfURL := fmt.Sprintf("/data/pdfs/%s", pdfFilename)
+	h.logger.Debug("PDF URL: %s", pdfURL)
+
 	w.Header().Set("Content-Type", "application/json")
 	response := map[string]string{
 		"filename": pdfFilename,
-		"url":      "/data/pdfs/" + pdfFilename,
+		"url":      pdfURL,
 	}
 	h.logger.Debug("Sending PDF response: %v", response)
 

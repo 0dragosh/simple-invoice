@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/0dragosh/simple-invoice/internal/models"
 	"github.com/jung-kurt/gofpdf"
@@ -432,7 +431,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	}
 
 	// Generate PDF file path
-	pdfFileName := fmt.Sprintf("invoice_%s_%s.pdf", invoice.InvoiceNumber, time.Now().Format("20060102"))
+	pdfFileName := fmt.Sprintf("invoice-%s.pdf", invoice.InvoiceNumber)
 	pdfPath := filepath.Join(s.dataDir, "pdfs", pdfFileName)
 
 	// Ensure the pdfs directory exists
