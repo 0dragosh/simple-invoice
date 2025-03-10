@@ -289,6 +289,29 @@ func (s *DBService) initDB() error {
 		s.logger.Info("Successfully added deleted column to clients table")
 	}
 
+	// Check if we need to add the created_date column to the clients table
+	s.logger.Debug("Checking if created_date column exists in clients table")
+	var createdDateColumnExists bool
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('clients')
+		WHERE name = 'created_date'
+	`).Scan(&createdDateColumnExists)
+	if err != nil {
+		s.logger.Error("Failed to check if created_date column exists: %v", err)
+		return fmt.Errorf("failed to check if created_date column exists: %w", err)
+	}
+
+	if !createdDateColumnExists {
+		s.logger.Info("Adding created_date column to clients table")
+		_, err = s.db.Exec(`ALTER TABLE clients ADD COLUMN created_date TIMESTAMP`)
+		if err != nil {
+			s.logger.Error("Failed to add created_date column: %v", err)
+			return fmt.Errorf("failed to add created_date column: %w", err)
+		}
+		s.logger.Info("Successfully added created_date column to clients table")
+	}
+
 	// Check if we need to remove the company_number column from the clients table
 	s.logger.Debug("Checking if company_number column exists in clients table")
 	var companyNumberColumnExists bool
