@@ -458,8 +458,8 @@ func (s *VatService) fetchFromVIES(countryCode, number string) (*models.Client, 
 
 	if resp.StatusCode != http.StatusOK {
 		errMsg := fmt.Sprintf("VIES API error: %s - %s", resp.Status, string(bodyBytes))
-		s.logger.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		s.logger.Error("VIES API error: %s", errMsg)
+		return nil, fmt.Errorf("VIES API error: %s", errMsg)
 	}
 
 	// Parse the SOAP response
@@ -651,8 +651,8 @@ func (s *VatService) LookupUKCompany(name string) ([]*models.Client, error) {
 	// Check for error responses
 	if resp.StatusCode != http.StatusOK {
 		errMsg := fmt.Sprintf("Companies House API error: %s - %s", resp.Status, string(bodyBytes))
-		s.logger.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		s.logger.Error("Companies House API error: %s", errMsg)
+		return nil, fmt.Errorf("Companies House API error: %s", errMsg)
 	}
 
 	// Parse the response
@@ -745,8 +745,8 @@ func (s *VatService) LookupUKCompanyByNumber(number string) (*models.Client, err
 	// Check for error responses
 	if resp.StatusCode != http.StatusOK {
 		errMsg := fmt.Sprintf("Companies House API error: %s - %s", resp.Status, string(bodyBytes))
-		s.logger.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		s.logger.Error("Companies House API error: %s", errMsg)
+		return nil, fmt.Errorf("Companies House API error: %s", errMsg)
 	}
 
 	// Parse the response
