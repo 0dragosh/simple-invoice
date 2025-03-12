@@ -15,11 +15,14 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Set version from build arg (without default)
+ARG VERSION
+
 # Build the application specifically for AMD64
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o server ./cmd/server
 
 # Final stage
-FROM --platform=linux/amd64 alpine:3.21.3
+FROM --platform=linux/amd64 alpine:3.19
 
 # Install required dependencies for SQLite
 RUN apk --no-cache add ca-certificates tzdata sqlite
@@ -49,6 +52,10 @@ ENV PORT=8080
 ENV DATA_DIR=/app/data
 ENV LOG_LEVEL="INFO"
 
+# Set version from build arg (without default)
+ARG VERSION
+ENV APP_VERSION=${VERSION}
+
 # Volume for persistent data
 VOLUME ["/app/data"]
 
@@ -59,3 +66,4 @@ USER 2000
 CMD ["/app/server"]
 
 LABEL org.opencontainers.image.source=https://github.com/0dragosh/simple-invoice
+LABEL org.opencontainers.image.version=${VERSION}
