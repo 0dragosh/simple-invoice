@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/jung-kurt/gofpdf/v2 v2.17.3
-	github.com/mattn/go-sqlite3 v1.14.24
+	github.com/mattn/go-sqlite3 v1.14.25
 )
 
 require github.com/robfig/cron/v3 v3.0.1
