@@ -52,7 +52,7 @@ module.exports = defineConfig({
       ? '../app' 
       : 'cd .. && go run cmd/server/main.go',
     port: 8080,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120 * 1000,
     env: {
       DATA_DIR: process.env.DATA_DIR || '../data',

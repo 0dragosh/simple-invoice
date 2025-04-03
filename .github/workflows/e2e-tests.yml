@@ -41,7 +41,25 @@ jobs:
           CGO_ENABLED: 1
           GOOS: linux
           GOARCH: amd64
-      
+
+      - name: Start app server
+        run: |
+          ./app &
+          # Wait for the server to start
+          echo "Waiting for server to start..."
+          sleep 10
+          # Check if server is running
+          curl -s http://localhost:8080/ > /dev/null
+          if [ $? -eq 0 ]; then
+            echo "Server is running at http://localhost:8080/"
+          else
+            echo "Failed to start server"
+            exit 1
+          fi
+        env:
+          DATA_DIR: ${{ github.workspace }}/data
+          LOG_LEVEL: DEBUG
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -85,4 +103,4 @@ jobs:
           name: generated-pdfs
           path: |
             data/pdfs/
-          retention-days: 14 
+          retention-days: 14
