@@ -77,12 +77,37 @@
     </div>
 </div>
 
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Warning!</strong> This action cannot be undone.
+                </div>
+                <p>Are you sure you want to delete the backup <strong id="deleteFilename"></strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete Backup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const createBackupBtn = document.getElementById('createBackupBtn');
     const restoreConfirmModal = new bootstrap.Modal(document.getElementById('restoreConfirmModal'));
+    const deleteConfirmModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
     const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
     let backupToRestore = '';
+    let backupToDelete = '';
     
     // Create backup
     createBackupBtn.addEventListener('click', function() {
@@ -101,12 +126,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return response.json();
         })
         .then(data => {
-            alert('Backup created successfully');
-            window.location.reload();
+            showToast('Backup created successfully', 'success');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         })
         .catch(error => {
             console.error('Error creating backup:', error);
-            alert('Error creating backup: ' + error.message);
+            showToast('Error creating backup: ' + error.message, 'error');
             createBackupBtn.disabled = false;
             createBackupBtn.textContent = 'Create Backup';
         });
@@ -138,12 +165,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return response.json();
         })
         .then(data => {
-            alert('Backup restored successfully. The application will now reload.');
-            window.location.href = '/';
+            showToast('Backup restored successfully. The application will now reload.', 'success');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
         })
         .catch(error => {
             console.error('Error restoring backup:', error);
-            alert('Error restoring backup: ' + error.message);
+            showToast('Error restoring backup: ' + error.message, 'error');
             confirmRestoreBtn.disabled = false;
             confirmRestoreBtn.textContent = 'Restore Backup';
         });
@@ -152,29 +181,40 @@ document.addEventListener('DOMContentLoaded', function() {
     // Delete backup
     document.querySelectorAll('.delete-backup').forEach(button => {
         button.addEventListener('click', function() {
-            const filename = this.getAttribute('data-filename');
-            
-            if (confirm(`Are you sure you want to delete the backup "${filename}"? This action cannot be undone.`)) {
-                fetch(`/api/backups?filename=${encodeURIComponent(filename)}`, {
-                    method: 'DELETE'
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(data => {
-                            throw new Error(data.message || 'Failed to delete backup');
-                        });
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    alert('Backup deleted successfully');
-                    window.location.reload();
-                })
-                .catch(error => {
-                    console.error('Error deleting backup:', error);
-                    alert('Error deleting backup: ' + error.message);
+            backupToDelete = this.getAttribute('data-filename');
+            document.getElementById('deleteFilename').textContent = backupToDelete;
+            deleteConfirmModal.show();
+        });
+    });
+    
+    // Confirm delete
+    confirmDeleteBtn.addEventListener('click', function() {
+        confirmDeleteBtn.disabled = true;
+        confirmDeleteBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Deleting...';
+        
+        fetch(`/api/backups?filename=${encodeURIComponent(backupToDelete)}`, {
+            method: 'DELETE'
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.message || 'Failed to delete backup');
                 });
             }
+            return response.json();
+        })
+        .then(data => {
+            showToast('Backup deleted successfully', 'success');
+            deleteConfirmModal.hide();
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        })
+        .catch(error => {
+            console.error('Error deleting backup:', error);
+            showToast('Error deleting backup: ' + error.message, 'error');
+            confirmDeleteBtn.disabled = false;
+            confirmDeleteBtn.textContent = 'Delete Backup';
         });
     });
 });

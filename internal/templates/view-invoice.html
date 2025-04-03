@@ -226,12 +226,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     generatePdfBtn.parentNode.appendChild(downloadLink);
                     
                     // Show a message
-                    alert('PDF generated. Click the Download PDF button to view it.');
+                    showToast('PDF generated. Click the Download PDF button to view it.', 'success');
                 }
             })
             .catch(error => {
                 console.error('Error generating PDF:', error);
-                alert('Error generating PDF: ' + error.message);
+                showToast('Error generating PDF: ' + error.message, 'error');
             })
             .finally(() => {
                 // Restore button state

@@ -20,6 +20,73 @@
             border-top: 1px solid #e5e5e5;
             color: #777;
         }
+        .custom-toast-container {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            z-index: 9999;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            width: 350px;
+        }
+        .custom-toast {
+            width: 100%;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-radius: 0.25rem;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+        }
+        .custom-toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .custom-toast-header {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .custom-toast-body {
+            padding: 0.75rem;
+        }
+        .custom-toast-title {
+            font-weight: bold;
+            margin-right: auto;
+        }
+        .custom-toast-close {
+            font-size: 1.25rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #000;
+            text-shadow: 0 1px 0 #fff;
+            opacity: .5;
+            padding: 0;
+            background-color: transparent;
+            border: 0;
+            cursor: pointer;
+        }
+        .bg-success-custom {
+            background-color: #28a745;
+            color: white;
+        }
+        .bg-danger-custom {
+            background-color: #dc3545;
+            color: white;
+        }
+        .bg-warning-custom {
+            background-color: #ffc107;
+        }
+        .bg-info-custom {
+            background-color: #17a2b8;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -61,7 +128,101 @@
         </footer>
     </div>
 
+    <!-- Custom Toast container -->
+    <div class="custom-toast-container" id="customToastContainer"></div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Track active toasts
+        const activeToasts = [];
+        let toastCounter = 0;
+        
+        function showToast(message, type = 'info') {
+            console.log('showToast called with message:', message, 'type:', type);
+            
+            const toastContainer = document.getElementById('customToastContainer');
+            if (!toastContainer) {
+                console.error('Toast container not found');
+                alert(message);
+                return;
+            }
+            
+            // Create toast ID
+            const toastId = 'toast-' + (++toastCounter);
+            
+            // Determine background color based on type
+            let bgClass = 'bg-info-custom';
+            if (type === 'success') {
+                bgClass = 'bg-success-custom';
+            } else if (type === 'error') {
+                bgClass = 'bg-danger-custom';
+            } else if (type === 'warning') {
+                bgClass = 'bg-warning-custom';
+            }
+            
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = 'custom-toast';
+            toast.innerHTML = `
+                <div class="custom-toast-header">
+                    <span class="custom-toast-title">Simple Invoice</span>
+                    <button type="button" class="custom-toast-close" onclick="closeToast('${toastId}')">&times;</button>
+                </div>
+                <div class="custom-toast-body ${bgClass}">${message}</div>
+            `;
+            
+            // Add to container
+            toastContainer.appendChild(toast);
+            
+            // Add to active toasts array
+            activeToasts.push({
+                id: toastId,
+                element: toast,
+                timeout: null
+            });
+            
+            // Trigger reflow and add show class
+            toast.offsetHeight;
+            toast.classList.add('show');
+            
+            // Set timeout to remove toast
+            const timeout = setTimeout(() => {
+                closeToast(toastId);
+            }, 5000);
+            
+            // Store timeout reference
+            const toastObj = activeToasts.find(t => t.id === toastId);
+            if (toastObj) {
+                toastObj.timeout = timeout;
+            }
+        }
+        
+        function closeToast(toastId) {
+            const toastObj = activeToasts.find(t => t.id === toastId);
+            if (!toastObj) return;
+            
+            // Clear timeout
+            if (toastObj.timeout) {
+                clearTimeout(toastObj.timeout);
+            }
+            
+            // Remove show class and add animation
+            const toast = toastObj.element;
+            toast.classList.remove('show');
+            
+            // Remove from DOM after animation completes
+            setTimeout(() => {
+                toast.remove();
+                
+                // Remove from active toasts array
+                const index = activeToasts.findIndex(t => t.id === toastId);
+                if (index > -1) {
+                    activeToasts.splice(index, 1);
+                }
+            }, 300);
+        }
+    </script>
 </body>
 </html>
 {{end}} 

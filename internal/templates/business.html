@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
     lookupVatBtn.addEventListener('click', function() {
         const vatId = document.getElementById('vatId').value;
         if (!vatId) {
-            alert('Please enter a VAT ID');
+            showToast('Please enter a VAT ID', 'warning');
             return;
         }
         
@@ -159,7 +159,7 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Error looking up VAT ID:', error);
-                alert('Error looking up VAT ID: ' + error.message);
+                showToast('Error looking up VAT ID: ' + error.message, 'error');
             });
     });
 
@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Error uploading logo:', error);
-            alert('Error uploading logo: ' + error.message);
+            showToast('Error uploading logo: ' + error.message, 'error');
         });
     }
 
@@ -225,12 +225,15 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             console.log('Business saved:', data);
-            alert('Business details saved successfully!');
-            window.location.reload();
+            showToast('Business details saved successfully!', 'success');
+            // Delay reload to allow toast to be visible
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         })
         .catch(error => {
             console.error('Error saving business:', error);
-            alert('Error saving business details: ' + error.message);
+            showToast('Error saving business details: ' + error.message, 'error');
         });
     }
 });
