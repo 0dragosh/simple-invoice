@@ -325,7 +325,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	pdf.Cell(90, 6, "TO")
 
 	// Business details
-	pdf.SetY(52)
+	pdf.SetY(53)
 	pdf.SetFont("Helvetica", "B", 11)
 	pdf.SetTextColor(50, 50, 50)
 	pdf.Cell(90, 6, business.Name)
@@ -336,34 +336,51 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	pdf.Cell(90, 6, client.Name)
 
 	// Business address
-	pdf.SetY(58)
+	pdf.SetY(61)
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(100, 100, 100)
-	pdf.MultiCell(90, 5, business.Address+"\n"+business.City+", "+business.PostalCode+"\n"+business.Country, "", "", false)
+	pdf.MultiCell(90, 5.5, business.Address+"\n"+business.City+", "+business.PostalCode+"\n"+business.Country, "", "", false)
 
 	// Add VAT ID and other business details
-	y := pdf.GetY() + 2
+	y := pdf.GetY() + 3
 	pdf.SetY(y)
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.Cell(90, 5, "VAT ID: "+business.VatID)
-	y += 5
+	y += 5.5
 	pdf.SetY(y)
 	pdf.Cell(90, 5, "Email: "+business.Email)
 
+	// Add extra business details in the FROM section if provided
+	if business.ExtraBusinessDetail != "" {
+		y += 7
+		pdf.SetY(y)
+		pdf.SetFont("Helvetica", "B", 9)
+		pdf.SetTextColor(80, 80, 80)
+		pdf.Cell(90, 5, "ADDITIONAL BUSINESS INFORMATION")
+
+		y += 5
+		pdf.SetY(y)
+		pdf.SetFont("Helvetica", "", 9) // Changed from italic to normal
+		pdf.SetTextColor(100, 100, 100)
+		pdf.MultiCell(90, 5.5, business.ExtraBusinessDetail, "", "", false)
+		y = pdf.GetY() + 10 // Increased spacing after the details from 5 to 10
+	}
+
 	// Client address
-	pdf.SetY(58)
+	pdf.SetY(61)
 	pdf.SetX(105)
 	pdf.SetFont("Helvetica", "", 9)
-	pdf.MultiCell(90, 5, client.Address+"\n"+client.City+", "+client.PostalCode+"\n"+client.Country, "", "", false)
+	pdf.MultiCell(90, 5.5, client.Address+"\n"+client.City+", "+client.PostalCode+"\n"+client.Country, "", "", false)
 
 	// Add VAT ID for client
-	y = pdf.GetY() + 2
+	y = pdf.GetY() + 3
 	pdf.SetY(y)
 	pdf.SetX(105)
 	pdf.Cell(90, 5, "VAT ID: "+client.VatID)
 
-	// Add dates in a modern, clean format
-	y = pdf.GetY() + 15
+	// Add dates in a modern, clean format - ensure enough space from business details
+	totalHeight := math.Max(y, pdf.GetY()) // Get the maximum Y position from both columns
+	y = totalHeight + 30                   // Increased spacing before the date section from 20 to 30
 	pdf.SetY(y)
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetTextColor(80, 80, 80)
@@ -497,7 +514,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	}
 
 	// Add payment information only if bank details are provided
-	if business.BankName != "" && business.IBAN != "" && business.BIC != "" {
+	if business.BankName != "" || business.IBAN != "" || business.BIC != "" || business.Currency != "" {
 		y = pdf.GetY() + 10
 		pdf.SetY(y)
 		pdf.SetFont("Helvetica", "B", 10)
@@ -508,21 +525,94 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 		pdf.SetY(y)
 		pdf.SetFont("Helvetica", "", 9)
 		pdf.SetTextColor(100, 100, 100)
-		pdf.Cell(30, 5, "Bank Name:")
-		pdf.SetX(45)
-		pdf.Cell(90, 5, business.BankName)
 
-		y += 5
-		pdf.SetY(y)
-		pdf.Cell(30, 5, "IBAN:")
-		pdf.SetX(45)
-		pdf.Cell(90, 5, business.IBAN)
+		// Only display fields that have values
+		if business.BankName != "" {
+			pdf.Cell(30, 5, "Bank Name:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.BankName)
+			y += 5
+			pdf.SetY(y)
+		}
 
-		y += 5
+		if business.IBAN != "" {
+			pdf.Cell(30, 5, "IBAN:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.IBAN)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		if business.BIC != "" {
+			pdf.Cell(30, 5, "BIC:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.BIC)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		// Add currency if available
+		if business.Currency != "" {
+			pdf.Cell(30, 5, "Currency:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.Currency)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		// Adjust y position to create space
+		y -= 5
+	}
+
+	// Add secondary bank account details if provided
+	if business.SecondBankName != "" || business.SecondIBAN != "" || business.SecondBIC != "" || business.SecondCurrency != "" {
+		y = pdf.GetY() + 10
 		pdf.SetY(y)
-		pdf.Cell(30, 5, "BIC:")
-		pdf.SetX(45)
-		pdf.Cell(90, 5, business.BIC)
+		pdf.SetFont("Helvetica", "B", 10)
+		pdf.SetTextColor(80, 80, 80)
+		pdf.Cell(90, 6, "ALTERNATIVE PAYMENT INFORMATION")
+
+		y += 6
+		pdf.SetY(y)
+		pdf.SetFont("Helvetica", "", 9)
+		pdf.SetTextColor(100, 100, 100)
+
+		// Only display fields that have values
+		if business.SecondBankName != "" {
+			pdf.Cell(30, 5, "Bank Name:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.SecondBankName)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		if business.SecondIBAN != "" {
+			pdf.Cell(30, 5, "IBAN:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.SecondIBAN)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		if business.SecondBIC != "" {
+			pdf.Cell(30, 5, "BIC:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.SecondBIC)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		// Add currency if available
+		if business.SecondCurrency != "" {
+			pdf.Cell(30, 5, "Currency:")
+			pdf.SetX(45)
+			pdf.Cell(90, 5, business.SecondCurrency)
+			y += 5
+			pdf.SetY(y)
+		}
+
+		// Adjust y position to create space
+		y -= 5
 	}
 
 	// Generate PDF file path

@@ -459,6 +459,87 @@ func (s *DBService) initDB() error {
 		}
 	}
 
+	// Check if we need to add the currency column to the businesses table
+	var businessCurrencyColumnExists bool
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('businesses')
+		WHERE name = 'currency'
+	`).Scan(&businessCurrencyColumnExists)
+	if err != nil {
+		s.logger.Error("Failed to check if currency column exists: %v", err)
+		return fmt.Errorf("failed to check if currency column exists: %w", err)
+	}
+
+	if !businessCurrencyColumnExists {
+		s.logger.Info("Adding currency column to businesses table")
+		_, err = s.db.Exec(`ALTER TABLE businesses ADD COLUMN currency TEXT DEFAULT 'EUR'`)
+		if err != nil {
+			s.logger.Error("Failed to add currency column: %v", err)
+			return fmt.Errorf("failed to add currency column: %w", err)
+		}
+	}
+
+	// Check for second bank details columns
+	var secondBankNameColumnExists bool
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('businesses')
+		WHERE name = 'second_bank_name'
+	`).Scan(&secondBankNameColumnExists)
+	if err != nil {
+		s.logger.Error("Failed to check if second_bank_name column exists: %v", err)
+		return fmt.Errorf("failed to check if second_bank_name column exists: %w", err)
+	}
+
+	if !secondBankNameColumnExists {
+		s.logger.Info("Adding second bank details columns to businesses table")
+		_, err = s.db.Exec(`ALTER TABLE businesses ADD COLUMN second_bank_name TEXT DEFAULT ''`)
+		if err != nil {
+			s.logger.Error("Failed to add second_bank_name column: %v", err)
+			return fmt.Errorf("failed to add second_bank_name column: %w", err)
+		}
+
+		_, err = s.db.Exec(`ALTER TABLE businesses ADD COLUMN second_iban TEXT DEFAULT ''`)
+		if err != nil {
+			s.logger.Error("Failed to add second_iban column: %v", err)
+			return fmt.Errorf("failed to add second_iban column: %w", err)
+		}
+
+		_, err = s.db.Exec(`ALTER TABLE businesses ADD COLUMN second_bic TEXT DEFAULT ''`)
+		if err != nil {
+			s.logger.Error("Failed to add second_bic column: %v", err)
+			return fmt.Errorf("failed to add second_bic column: %w", err)
+		}
+
+		_, err = s.db.Exec(`ALTER TABLE businesses ADD COLUMN second_currency TEXT DEFAULT ''`)
+		if err != nil {
+			s.logger.Error("Failed to add second_currency column: %v", err)
+			return fmt.Errorf("failed to add second_currency column: %w", err)
+		}
+	}
+
+	// Check for extra business details column
+	var extraBusinessDetailColumnExists bool
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM pragma_table_info('businesses')
+		WHERE name = 'extra_business_detail'
+	`).Scan(&extraBusinessDetailColumnExists)
+	if err != nil {
+		s.logger.Error("Failed to check if extra_business_detail column exists: %v", err)
+		return fmt.Errorf("failed to check if extra_business_detail column exists: %w", err)
+	}
+
+	if !extraBusinessDetailColumnExists {
+		s.logger.Info("Adding extra_business_detail column to businesses table")
+		_, err = s.db.Exec(`ALTER TABLE businesses ADD COLUMN extra_business_detail TEXT DEFAULT ''`)
+		if err != nil {
+			s.logger.Error("Failed to add extra_business_detail column: %v", err)
+			return fmt.Errorf("failed to add extra_business_detail column: %w", err)
+		}
+	}
+
 	s.logger.Debug("Database initialization completed successfully")
 	return nil
 }
@@ -470,11 +551,18 @@ func (s *DBService) SaveBusiness(business *models.Business) error {
 	if business.ID == 0 {
 		// Insert new business
 		result, err := s.db.Exec(`
-			INSERT INTO businesses (name, address, city, postal_code, country, vat_id, email, bank_name, bank_account, iban, bic, logo_path)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO businesses (
+				name, address, city, postal_code, country, vat_id, email, 
+				bank_name, bank_account, iban, bic, currency,
+				second_bank_name, second_iban, second_bic, second_currency,
+				extra_business_detail, logo_path
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			business.Name, business.Address, business.City, business.PostalCode, business.Country,
-			business.VatID, business.Email, business.BankName, business.BankAccount, business.IBAN, business.BIC, business.LogoPath,
+			business.VatID, business.Email, business.BankName, business.BankAccount, business.IBAN, business.BIC, business.Currency,
+			business.SecondBankName, business.SecondIBAN, business.SecondBIC, business.SecondCurrency,
+			business.ExtraBusinessDetail, business.LogoPath,
 		)
 		if err != nil {
 			return err
@@ -490,12 +578,16 @@ func (s *DBService) SaveBusiness(business *models.Business) error {
 		// Update existing business
 		_, err := s.db.Exec(`
 			UPDATE businesses
-			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, email = ?, bank_name = ?, bank_account = ?, iban = ?, bic = ?, logo_path = ?
+			SET name = ?, address = ?, city = ?, postal_code = ?, country = ?, vat_id = ?, email = ?, 
+				bank_name = ?, bank_account = ?, iban = ?, bic = ?, currency = ?,
+				second_bank_name = ?, second_iban = ?, second_bic = ?, second_currency = ?,
+				extra_business_detail = ?, logo_path = ?
 			WHERE id = ?
 		`,
 			business.Name, business.Address, business.City, business.PostalCode, business.Country,
-			business.VatID, business.Email, business.BankName, business.BankAccount, business.IBAN, business.BIC, business.LogoPath,
-			business.ID,
+			business.VatID, business.Email, business.BankName, business.BankAccount, business.IBAN, business.BIC, business.Currency,
+			business.SecondBankName, business.SecondIBAN, business.SecondBIC, business.SecondCurrency,
+			business.ExtraBusinessDetail, business.LogoPath, business.ID,
 		)
 		if err != nil {
 			return err
@@ -515,7 +607,14 @@ func (s *DBService) GetBusiness(id int) (*models.Business, error) {
 
 	var business models.Business
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, address, city, postal_code, country, vat_id, email, bank_name, bank_account, iban, bic, logo_path
+		SELECT id, name, address, city, postal_code, country, vat_id, email, 
+			bank_name, bank_account, iban, bic, COALESCE(currency, 'EUR') as currency,
+			COALESCE(second_bank_name, '') as second_bank_name, 
+			COALESCE(second_iban, '') as second_iban, 
+			COALESCE(second_bic, '') as second_bic, 
+			COALESCE(second_currency, '') as second_currency,
+			COALESCE(extra_business_detail, '') as extra_business_detail,
+			logo_path
 		FROM businesses
 		WHERE id = ?
 	`, id).Scan(
@@ -531,6 +630,12 @@ func (s *DBService) GetBusiness(id int) (*models.Business, error) {
 		&business.BankAccount,
 		&business.IBAN,
 		&business.BIC,
+		&business.Currency,
+		&business.SecondBankName,
+		&business.SecondIBAN,
+		&business.SecondBIC,
+		&business.SecondCurrency,
+		&business.ExtraBusinessDetail,
 		&business.LogoPath,
 	)
 
@@ -550,7 +655,14 @@ func (s *DBService) GetBusiness(id int) (*models.Business, error) {
 // GetBusinesses retrieves all businesses from the database
 func (s *DBService) GetBusinesses() ([]models.Business, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, address, city, postal_code, country, vat_id, email, bank_name, bank_account, iban, bic, logo_path
+		SELECT id, name, address, city, postal_code, country, vat_id, email, 
+			bank_name, bank_account, iban, bic, COALESCE(currency, 'EUR') as currency,
+			COALESCE(second_bank_name, '') as second_bank_name, 
+			COALESCE(second_iban, '') as second_iban, 
+			COALESCE(second_bic, '') as second_bic, 
+			COALESCE(second_currency, '') as second_currency,
+			COALESCE(extra_business_detail, '') as extra_business_detail,
+			logo_path
 		FROM businesses
 	`)
 	if err != nil {
@@ -564,7 +676,9 @@ func (s *DBService) GetBusinesses() ([]models.Business, error) {
 		err := rows.Scan(
 			&business.ID, &business.Name, &business.Address, &business.City, &business.PostalCode,
 			&business.Country, &business.VatID, &business.Email, &business.BankName, &business.BankAccount,
-			&business.IBAN, &business.BIC, &business.LogoPath,
+			&business.IBAN, &business.BIC, &business.Currency,
+			&business.SecondBankName, &business.SecondIBAN, &business.SecondBIC, &business.SecondCurrency,
+			&business.ExtraBusinessDetail, &business.LogoPath,
 		)
 		if err != nil {
 			return nil, err

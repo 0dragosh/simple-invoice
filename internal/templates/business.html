@@ -44,6 +44,8 @@
                     <div class="form-text">Your email address will be displayed on invoices</div>
                 </div>
             </div>
+            
+            <h4 class="mt-4">Primary Bank Account</h4>
             <div class="row mb-3">
                 <div class="col-md-6">
                     <label for="bankName" class="form-label">Bank Name (optional)</label>
@@ -55,15 +57,50 @@
                 </div>
             </div>
             <div class="row mb-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label for="iban" class="form-label">IBAN (optional)</label>
                     <input type="text" class="form-control" id="iban" name="iban" value="{{.Business.IBAN}}">
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label for="bic" class="form-label">BIC (optional)</label>
                     <input type="text" class="form-control" id="bic" name="bic" value="{{.Business.BIC}}">
                 </div>
+                <div class="col-md-4">
+                    <label for="currency" class="form-label">Currency</label>
+                    <input type="text" class="form-control" id="currency" name="currency" value="{{if .Business.Currency}}{{.Business.Currency}}{{else}}EUR{{end}}">
+                </div>
             </div>
+            
+            <h4 class="mt-4">Secondary Bank Account</h4>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="secondBankName" class="form-label">Second Bank Name (optional)</label>
+                    <input type="text" class="form-control" id="secondBankName" name="secondBankName" value="{{.Business.SecondBankName}}">
+                </div>
+                <div class="col-md-6">
+                    <label for="secondIBAN" class="form-label">Second IBAN (optional)</label>
+                    <input type="text" class="form-control" id="secondIBAN" name="secondIBAN" value="{{.Business.SecondIBAN}}">
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="secondBIC" class="form-label">Second BIC (optional)</label>
+                    <input type="text" class="form-control" id="secondBIC" name="secondBIC" value="{{.Business.SecondBIC}}">
+                </div>
+                <div class="col-md-6">
+                    <label for="secondCurrency" class="form-label">Second Currency (optional)</label>
+                    <input type="text" class="form-control" id="secondCurrency" name="secondCurrency" value="{{.Business.SecondCurrency}}">
+                </div>
+            </div>
+            
+            <div class="row mb-3">
+                <div class="col-md-12">
+                    <label for="extraBusinessDetail" class="form-label">Extra Business Details (optional)</label>
+                    <textarea class="form-control" id="extraBusinessDetail" name="extraBusinessDetail" rows="3">{{.Business.ExtraBusinessDetail}}</textarea>
+                    <div class="form-text">Add any additional local business IDs or relevant details</div>
+                </div>
+            </div>
+            
             <div class="row mb-3">
                 <div class="col-md-12">
                     <label for="logo" class="form-label">Logo (optional)</label>
@@ -164,6 +201,12 @@ document.addEventListener('DOMContentLoaded', function() {
             bank_account: document.getElementById('bankAccount').value,
             iban: document.getElementById('iban').value,
             bic: document.getElementById('bic').value,
+            currency: document.getElementById('currency').value,
+            second_bank_name: document.getElementById('secondBankName').value,
+            second_iban: document.getElementById('secondIBAN').value,
+            second_bic: document.getElementById('secondBIC').value,
+            second_currency: document.getElementById('secondCurrency').value,
+            extra_business_detail: document.getElementById('extraBusinessDetail').value,
             logo_path: logoPath || '{{.Business.LogoPath}}'
         };
 
