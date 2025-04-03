@@ -1,0 +1,15 @@
+{
+  "name": "simple-invoice-e2e",
+  "version": "1.0.0",
+  "description": "E2E tests for Simple Invoice app",
+  "scripts": {
+    "test": "playwright test",
+    "test:ci": "playwright test",
+    "test:debug": "playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.42.1",
+    "pdf-parse": "^1.1.1",
+    "faker": "^5.5.3"
+  }
+} 
