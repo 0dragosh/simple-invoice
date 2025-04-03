@@ -124,7 +124,7 @@
         {{template "content" .}}
 
         <footer class="footer">
-            <p>&copy; {{.CurrentYear}} Simple Invoice</p>
+            <p>&copy; {{.CurrentYear}} Simple Invoice {{if .Version}}| Version: {{.Version}}{{end}}</p>
         </footer>
     </div>
 

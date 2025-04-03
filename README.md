@@ -169,3 +169,38 @@ docker run -p 8080:8080 -v $(pwd)/data:/app/data simple-invoice
 * multiple businesses -- use invoiceninja/invoiceshelf
 * custom pdf templates -- use invoiceninja/invoiceshelf
 * security/encryption -- use authelia/authentik in front of simple-invoice OR just use invoiceninja/invoiceshelf
+
+## Version Management
+
+The application now shows version information in the UI footer. Version is determined as follows:
+
+- When using `release.sh` to create a new release, it sets the Git tag and saves the version to a `VERSION` file
+- During Docker builds, the version is passed as a build arg (`APP_VERSION`)
+- If no tag is available, the version defaults to `dev-{git_short_sha}`
+
+### Building with Docker
+
+To build the Docker image with the version:
+
+```bash
+# Get the current version (from Git tag or dev-sha)
+VERSION=$(./get-version.sh)
+
+# Build the Docker image with version
+docker build --build-arg APP_VERSION=${VERSION} -t simple-invoice:${VERSION} .
+```
+```bash
+# docker-compose dev flow example
+docker compose -f docker-compose.dev.yml build --build-arg APP_VERSION=test && docker compose -f docker-compose.dev.yml up
+```
+
+### CI/CD Integration
+
+For CI/CD pipelines, the workflow should look like:
+
+1. Developers create releases using `./release.sh major|minor|patch|auto`
+2. CI detects the new tag and builds with:
+   ```
+   docker build --build-arg APP_VERSION=${TAG_NAME} -t simple-invoice:${TAG_NAME} .
+   ```
+3. For development builds, use `./get-version.sh` to generate a version like `dev-a1b2c3d`
