@@ -189,6 +189,10 @@ VERSION=$(./get-version.sh)
 # Build the Docker image with version
 docker build --build-arg APP_VERSION=${VERSION} -t simple-invoice:${VERSION} .
 ```
+```bash
+# docker-compose dev flow example
+docker compose -f docker-compose.dev.yml build --build-arg APP_VERSION=test && docker compose -f docker-compose.dev.yml up
+```
 
 ### CI/CD Integration
 
