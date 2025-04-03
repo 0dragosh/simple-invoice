@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-$(cat VERSION)}
       tags:
         - ghcr.io/0dragosh/simple-invoice:develop
     ports:

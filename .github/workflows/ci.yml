@@ -152,7 +152,7 @@ jobs:
         platforms: ${{ matrix.platform }}
         push: true
         build-args: |
-          VERSION=${{ needs.prepare-docker.outputs.version }}
+          APP_VERSION=${{ needs.prepare-docker.outputs.version }}
         outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true
         cache-from: type=gha
         cache-to: type=gha,mode=max
