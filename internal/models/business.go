@@ -21,4 +21,20 @@ type Business struct {
 	SecondCurrency      string `json:"second_currency"`
 	ExtraBusinessDetail string `json:"extra_business_detail"`
 	LogoPath            string `json:"logo_path"`
+	LogoURL             string `json:"logo_url"` // URL to display the logo, without the /app prefix
+}
+
+// GetLogoURL returns the correct URL to display the logo
+func (b *Business) GetLogoURL() string {
+	if b.LogoPath == "" {
+		return ""
+	}
+
+	// Strip the /app prefix if it exists
+	logoPath := b.LogoPath
+	if len(logoPath) >= 4 && logoPath[:4] == "/app" {
+		logoPath = logoPath[4:]
+	}
+
+	return logoPath
 }

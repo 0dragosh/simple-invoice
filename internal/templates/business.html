@@ -108,7 +108,7 @@
                     <div class="form-text">Upload your business logo for invoices (optional)</div>
                     {{if .Business.LogoPath}}
                     <div class="mt-2">
-                        <img src="/data/images/{{.Business.LogoPath}}" alt="Business Logo" style="max-height: 100px;">
+                        <img src="{{.Business.LogoURL}}" alt="Business Logo" style="max-height: 100px;">
                     </div>
                     {{end}}
                 </div>
@@ -238,4 +238,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-{{end}} 
+{{end}}

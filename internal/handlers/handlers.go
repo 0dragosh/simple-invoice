@@ -247,6 +247,7 @@ func (h *AppHandler) BusinessHandler(w http.ResponseWriter, r *http.Request) {
 	var business models.Business
 	if len(businesses) > 0 {
 		business = businesses[0]
+		business.LogoURL = business.GetLogoURL()
 	}
 
 	data := map[string]interface{}{
