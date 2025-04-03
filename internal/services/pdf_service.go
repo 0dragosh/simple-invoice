@@ -514,105 +514,131 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 	}
 
 	// Add payment information only if bank details are provided
-	if business.BankName != "" || business.IBAN != "" || business.BIC != "" || business.Currency != "" {
-		y = pdf.GetY() + 10
-		pdf.SetY(y)
-		pdf.SetFont("Helvetica", "B", 10)
-		pdf.SetTextColor(80, 80, 80)
-		pdf.Cell(90, 6, "PAYMENT INFORMATION")
+	if business.BankName != "" || business.IBAN != "" || business.BIC != "" || business.Currency != "" ||
+		business.SecondBankName != "" || business.SecondIBAN != "" || business.SecondBIC != "" || business.SecondCurrency != "" {
 
-		y += 6
-		pdf.SetY(y)
-		pdf.SetFont("Helvetica", "", 9)
-		pdf.SetTextColor(100, 100, 100)
+		// Determine which bank accounts to display based on invoice currency
+		displayPrimary := true
+		displaySecondary := false
 
-		// Only display fields that have values
-		if business.BankName != "" {
-			pdf.Cell(30, 5, "Bank Name:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.BankName)
-			y += 5
-			pdf.SetY(y)
+		// Check if any bank accounts match the invoice currency
+		primaryMatches := business.Currency == invoice.Currency && (business.BankName != "" || business.IBAN != "" || business.BIC != "")
+		secondaryMatches := business.SecondCurrency == invoice.Currency && (business.SecondBankName != "" || business.SecondIBAN != "" || business.SecondBIC != "")
+
+		// If either account matches the currency, only show matching accounts
+		if primaryMatches || secondaryMatches {
+			displayPrimary = primaryMatches
+			displaySecondary = secondaryMatches
 		}
 
-		if business.IBAN != "" {
-			pdf.Cell(30, 5, "IBAN:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.IBAN)
-			y += 5
+		// Display primary account if it should be shown
+		if displayPrimary {
+			y = pdf.GetY() + 10
 			pdf.SetY(y)
+			pdf.SetFont("Helvetica", "B", 10)
+			pdf.SetTextColor(80, 80, 80)
+			pdf.Cell(90, 6, "PAYMENT INFORMATION")
+
+			y += 6
+			pdf.SetY(y)
+			pdf.SetFont("Helvetica", "", 9)
+			pdf.SetTextColor(100, 100, 100)
+
+			// Only display fields that have values
+			if business.BankName != "" {
+				pdf.Cell(30, 5, "Bank Name:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.BankName)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			if business.IBAN != "" {
+				pdf.Cell(30, 5, "IBAN:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.IBAN)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			if business.BIC != "" {
+				pdf.Cell(30, 5, "BIC:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.BIC)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			// Add currency if available
+			if business.Currency != "" {
+				pdf.Cell(30, 5, "Currency:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.Currency)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			// Adjust y position to create space
+			y -= 5
 		}
 
-		if business.BIC != "" {
-			pdf.Cell(30, 5, "BIC:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.BIC)
-			y += 5
+		// Display secondary account if it should be shown
+		if displaySecondary {
+			// If we're displaying both accounts, use "ALTERNATIVE PAYMENT INFORMATION"
+			// Otherwise just use "PAYMENT INFORMATION" for consistency
+			title := "PAYMENT INFORMATION"
+			if displayPrimary {
+				title = "ALTERNATIVE PAYMENT INFORMATION"
+			}
+
+			y = pdf.GetY() + 10
 			pdf.SetY(y)
-		}
+			pdf.SetFont("Helvetica", "B", 10)
+			pdf.SetTextColor(80, 80, 80)
+			pdf.Cell(90, 6, title)
 
-		// Add currency if available
-		if business.Currency != "" {
-			pdf.Cell(30, 5, "Currency:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.Currency)
-			y += 5
+			y += 6
 			pdf.SetY(y)
+			pdf.SetFont("Helvetica", "", 9)
+			pdf.SetTextColor(100, 100, 100)
+
+			// Only display fields that have values
+			if business.SecondBankName != "" {
+				pdf.Cell(30, 5, "Bank Name:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.SecondBankName)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			if business.SecondIBAN != "" {
+				pdf.Cell(30, 5, "IBAN:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.SecondIBAN)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			if business.SecondBIC != "" {
+				pdf.Cell(30, 5, "BIC:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.SecondBIC)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			// Add currency if available
+			if business.SecondCurrency != "" {
+				pdf.Cell(30, 5, "Currency:")
+				pdf.SetX(45)
+				pdf.Cell(90, 5, business.SecondCurrency)
+				y += 5
+				pdf.SetY(y)
+			}
+
+			// Adjust y position to create space
+			y -= 5
 		}
-
-		// Adjust y position to create space
-		y -= 5
-	}
-
-	// Add secondary bank account details if provided
-	if business.SecondBankName != "" || business.SecondIBAN != "" || business.SecondBIC != "" || business.SecondCurrency != "" {
-		y = pdf.GetY() + 10
-		pdf.SetY(y)
-		pdf.SetFont("Helvetica", "B", 10)
-		pdf.SetTextColor(80, 80, 80)
-		pdf.Cell(90, 6, "ALTERNATIVE PAYMENT INFORMATION")
-
-		y += 6
-		pdf.SetY(y)
-		pdf.SetFont("Helvetica", "", 9)
-		pdf.SetTextColor(100, 100, 100)
-
-		// Only display fields that have values
-		if business.SecondBankName != "" {
-			pdf.Cell(30, 5, "Bank Name:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.SecondBankName)
-			y += 5
-			pdf.SetY(y)
-		}
-
-		if business.SecondIBAN != "" {
-			pdf.Cell(30, 5, "IBAN:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.SecondIBAN)
-			y += 5
-			pdf.SetY(y)
-		}
-
-		if business.SecondBIC != "" {
-			pdf.Cell(30, 5, "BIC:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.SecondBIC)
-			y += 5
-			pdf.SetY(y)
-		}
-
-		// Add currency if available
-		if business.SecondCurrency != "" {
-			pdf.Cell(30, 5, "Currency:")
-			pdf.SetX(45)
-			pdf.Cell(90, 5, business.SecondCurrency)
-			y += 5
-			pdf.SetY(y)
-		}
-
-		// Adjust y position to create space
-		y -= 5
 	}
 
 	// Generate PDF file path
