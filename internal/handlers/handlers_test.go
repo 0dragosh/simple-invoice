@@ -24,7 +24,7 @@ func setupTestHandler(t *testing.T) (*AppHandler, string, func()) {
 	logger := services.NewLogger(services.INFO)
 
 	// Create a new app handler with the temp directory
-	handler, err := NewAppHandler(tempDir, logger)
+	handler, err := NewAppHandler(tempDir, logger, "test-version")
 	if err != nil {
 		os.RemoveAll(tempDir)
 		t.Fatalf("Failed to create app handler: %v", err)
