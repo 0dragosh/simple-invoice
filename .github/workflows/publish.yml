@@ -57,11 +57,6 @@ jobs:
         driver-opts: |
           image=moby/buildkit:latest
           network=host
-        config: |
-          [worker.oci]
-            max-parallelism = 2
-          [worker.containerd]
-            max-parallelism = 2
 
     - name: Cache Docker outputs
       uses: actions/cache@v4
