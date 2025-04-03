@@ -1,4 +1,4 @@
-const faker = require('faker');
+const { faker } = require('@faker-js/faker');
 const fs = require('fs');
 const path = require('path');
 const pdfParse = require('pdf-parse');
@@ -8,22 +8,22 @@ const pdfParse = require('pdf-parse');
  */
 function generateBusinessData() {
   return {
-    name: `${faker.company.companyName()} ${faker.random.alphaNumeric(4)}`,
-    address: faker.address.streetAddress(),
-    city: faker.address.city(),
-    postalCode: faker.address.zipCode(),
-    country: faker.address.country(),
-    vatID: `${faker.random.alpha(2).toUpperCase()}${faker.datatype.number({min: 100000000, max: 999999999})}`,
+    name: `${faker.company.name()} ${faker.string.alphanumeric(4)}`,
+    address: faker.location.streetAddress(),
+    city: faker.location.city(),
+    postalCode: faker.location.zipCode(),
+    country: faker.location.country(),
+    vatID: `${faker.string.alpha(2).toUpperCase()}${faker.number.int({min: 100000000, max: 999999999})}`,
     email: faker.internet.email(),
-    bankName: faker.company.companyName() + ' Bank',
-    iban: `${faker.random.alpha(2).toUpperCase()}${faker.random.alphaNumeric(30)}`,
-    bic: faker.random.alpha(8).toUpperCase(),
-    bankNameUSD: faker.company.companyName() + ' USD Bank',
-    ibanUSD: `${faker.random.alpha(2).toUpperCase()}${faker.random.alphaNumeric(30)}`,
-    bicUSD: faker.random.alpha(8).toUpperCase(),
-    registrationNumber: faker.datatype.number({min: 10000000, max: 99999999}).toString(),
+    bankName: faker.company.name() + ' Bank',
+    iban: `${faker.string.alpha(2).toUpperCase()}${faker.string.alphanumeric(30)}`,
+    bic: faker.string.alpha(8).toUpperCase(),
+    bankNameUSD: faker.company.name() + ' USD Bank',
+    ibanUSD: `${faker.string.alpha(2).toUpperCase()}${faker.string.alphanumeric(30)}`,
+    bicUSD: faker.string.alpha(8).toUpperCase(),
+    registrationNumber: faker.number.int({min: 10000000, max: 99999999}).toString(),
     website: faker.internet.url(),
-    phone: faker.phone.phoneNumber()
+    phone: faker.phone.number()
   };
 }
 
@@ -32,14 +32,14 @@ function generateBusinessData() {
  */
 function generateClientData() {
   return {
-    name: `${faker.company.companyName()} ${faker.random.alphaNumeric(4)}`,
-    address: faker.address.streetAddress(),
-    city: faker.address.city(),
-    postalCode: faker.address.zipCode(),
-    country: faker.address.country(),
-    vatID: `${faker.random.alpha(2).toUpperCase()}${faker.datatype.number({min: 100000000, max: 999999999})}`,
+    name: `${faker.company.name()} ${faker.string.alphanumeric(4)}`,
+    address: faker.location.streetAddress(),
+    city: faker.location.city(),
+    postalCode: faker.location.zipCode(),
+    country: faker.location.country(),
+    vatID: `${faker.string.alpha(2).toUpperCase()}${faker.number.int({min: 100000000, max: 999999999})}`,
     email: faker.internet.email(),
-    phone: faker.phone.phoneNumber()
+    phone: faker.phone.number()
   };
 }
 
@@ -49,14 +49,14 @@ function generateClientData() {
 function generateInvoiceData(businessName, clientName, currency = 'EUR', vatType = 'normal') {
   const baseItems = [
     {
-      description: `${faker.commerce.productName()} - ${faker.random.words(3)}`,
-      quantity: faker.datatype.number({min: 1, max: 5}),
-      unitPrice: faker.datatype.number({min: 100, max: 1000})
+      description: `${faker.commerce.productName()} - ${faker.word.words(3)}`,
+      quantity: faker.number.int({min: 1, max: 5}),
+      unitPrice: faker.number.int({min: 100, max: 1000})
     },
     {
-      description: `${faker.commerce.productName()} - ${faker.random.words(3)}`,
-      quantity: faker.datatype.number({min: 1, max: 5}),
-      unitPrice: faker.datatype.number({min: 100, max: 1000})
+      description: `${faker.commerce.productName()} - ${faker.word.words(3)}`,
+      quantity: faker.number.int({min: 1, max: 5}),
+      unitPrice: faker.number.int({min: 100, max: 1000})
     }
   ];
   
@@ -69,7 +69,7 @@ function generateInvoiceData(businessName, clientName, currency = 'EUR', vatType
   }
   
   return {
-    invoiceNumber: `INV-${faker.datatype.number({min: 10000, max: 99999})}`,
+    invoiceNumber: `INV-${faker.number.int({min: 10000, max: 99999})}`,
     issueDate: faker.date.recent().toISOString().split('T')[0],
     dueDate: faker.date.future().toISOString().split('T')[0],
     currency: currency,

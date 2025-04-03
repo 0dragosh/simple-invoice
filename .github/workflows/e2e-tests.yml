@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: 'e2e/package.json'
+          cache-dependency-path: 'e2e/package-lock.json'
       
       - name: Install Playwright and dependencies
         working-directory: e2e
