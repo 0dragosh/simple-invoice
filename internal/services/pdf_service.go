@@ -158,6 +158,7 @@ func (s *PDFService) GenerateInvoice(invoice *models.Invoice, business *models.B
 
 	// Helper function to format currency values
 	formatCurrency := func(amount float64) string {
+		// Use currency code instead of symbol to avoid encoding issues
 		return fmt.Sprintf("%.2f %s", amount, invoice.Currency)
 	}
 

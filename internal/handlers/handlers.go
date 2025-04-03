@@ -711,6 +711,7 @@ func (h *AppHandler) InvoicesAPIHandler(w http.ResponseWriter, r *http.Request) 
 			VatRate:          rawInvoice["vat_rate"].(float64),
 			VatAmount:        rawInvoice["vat_amount"].(float64),
 			ReverseChargeVat: rawInvoice["reverse_charge_vat"].(bool),
+			Currency:         rawInvoice["currency"].(string),
 			Notes:            rawInvoice["notes"].(string),
 			Status:           rawInvoice["status"].(string),
 		}

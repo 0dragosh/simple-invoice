@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const clientCountry = selectedOption.getAttribute('data-country');
         
         if (clientCountry) {
-            const currency = countryCurrencyMap['default'];
+            const currency = countryCurrencyMap[clientCountry] || countryCurrencyMap['default'];
             document.getElementById('currency').value = currency;
             
             // Check if the client is from the EU
