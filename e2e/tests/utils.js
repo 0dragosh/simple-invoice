@@ -75,7 +75,7 @@ function generateInvoiceData(businessName, clientName, currency = 'EUR', vatType
     currency: currency,
     notes: vatType === 'reverse-charge' 
       ? 'Reverse charge VAT applies. VAT to be accounted for by the recipient.'
-      : faker.lorem.sentence(),
+      : faker.lorem.paragraph(),
     vatRate: vatRate,
     items: baseItems
   };
@@ -123,9 +123,36 @@ async function validatePDF(pdfPath, expectedValues) {
   return validation;
 }
 
+/**
+ * Utility to fill a field with multiple possible selectors
+ * @param {Page} page Playwright page object
+ * @param {Array<string>} selectors Array of possible selectors
+ * @param {string} value Value to fill
+ * @param {boolean} quiet Whether to suppress "not found" warnings
+ * @returns {Promise<boolean>} Whether filling succeeded
+ */
+async function fillWithMultipleSelectors(page, selectors, value, quiet = false) {
+  for (const selector of selectors) {
+    try {
+      const element = page.locator(selector);
+      if (await element.count() > 0) {
+        await element.fill(value);
+        return true;
+      }
+    } catch (e) {
+      // Continue to next selector
+    }
+  }
+  if (!quiet) {
+    console.log(`Could not find any of these selectors: ${selectors.join(', ')}`);
+  }
+  return false;
+}
+
 module.exports = {
   generateBusinessData,
   generateClientData,
   generateInvoiceData,
-  validatePDF
+  validatePDF,
+  fillWithMultipleSelectors
 }; 

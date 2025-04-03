@@ -4,12 +4,20 @@
   "description": "E2E tests for Simple Invoice app",
   "scripts": {
     "test": "playwright test",
+    "test:all": "BASE_URL=http://localhost:8080 playwright test",
+    "test:report": "BASE_URL=http://localhost:8080 playwright test --reporter=html",
     "test:ci": "playwright test",
-    "test:debug": "playwright test --debug"
+    "test:debug": "playwright test --debug",
+    "test:basic": "BASE_URL=http://localhost:8080 playwright test tests/invoice-basic.spec.js",
+    "test:minimal": "BASE_URL=http://localhost:8080 playwright test tests/invoice-minimal.spec.js",
+    "test:flat": "BASE_URL=http://localhost:8080 playwright test tests/invoice-flat.spec.js",
+    "test:full": "BASE_URL=http://localhost:8080 playwright test tests/invoice-full.spec.js",
+    "test:simple": "BASE_URL=http://localhost:8080 playwright test tests/simple.spec.js tests/pages.spec.js",
+    "show:report": "playwright show-report"
   },
   "devDependencies": {
     "@playwright/test": "^1.42.1",
     "pdf-parse": "^1.1.1",
-    "faker": "^6.0.0"
+    "@faker-js/faker": "^9.6.0"
   }
 } 

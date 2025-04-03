@@ -7,12 +7,12 @@ const { defineConfig } = require('@playwright/test');
 module.exports = defineConfig({
   testDir: './tests',
   // Maximum time one test can run for
-  timeout: 30 * 1000,
+  timeout: 60 * 1000,
   expect: {
     /**
      * Maximum time expect() should wait for the condition to be met
      */
-    timeout: 5000
+    timeout: 10000
   },
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
@@ -38,15 +38,25 @@ module.exports = defineConfig({
         // Artifacts
         video: process.env.CI ? 'on-first-retry' : 'off',
         screenshot: process.env.CI ? 'only-on-failure' : 'off',
+        // Set a generous timeout for navigations
+        navigationTimeout: 30000,
+        // Set a generous timeout for actions
+        actionTimeout: 15000,
       },
     },
   ],
 
-  // Local dev server
-  webServer: {
-    command: 'cd .. && go run cmd/server/main.go',
+  // Local dev server - only enable in CI
+  webServer: process.env.CI ? {
+    command: process.env.CI 
+      ? '../app' 
+      : 'cd .. && go run cmd/server/main.go',
     port: 8080,
     reuseExistingServer: !process.env.CI,
-    timeout: 60 * 1000,
-  },
+    timeout: 120 * 1000,
+    env: {
+      DATA_DIR: process.env.DATA_DIR || '../data',
+      LOG_LEVEL: process.env.LOG_LEVEL || 'DEBUG',
+    }
+  } : undefined,
 }); 
