@@ -10,14 +10,19 @@ WORKDIR /app
 # Copy go mod and sum files
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Download dependencies with caching
+# This step will be cached unless go.mod/go.sum change
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build the application specifically for AMD64
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -ldflags "-X main.Version=${APP_VERSION}" -o server ./cmd/server
+# Build the application with caching
+# This enables caching of the go build cache
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -ldflags "-X main.Version=${APP_VERSION}" -o server ./cmd/server
 
 # Final stage
 FROM --platform=linux/amd64 alpine:3.21.3

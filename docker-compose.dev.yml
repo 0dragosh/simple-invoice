@@ -16,4 +16,9 @@ services:
       - DATA_DIR=/app/data
       - COMPANIES_HOUSE_API_KEY=${COMPANIES_HOUSE_API_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
-    restart: unless-stopped 
+    restart: unless-stopped
+
+# Enable BuildKit by default for this compose file
+x-setup:
+  docker:
+    buildkit: true 
