@@ -121,11 +121,28 @@
         <div class="row mt-4">
             <div class="col-md-6">
                 <h5>Payment Details:</h5>
+                {{if .Business.IBAN}}
                 <p>
                     <strong>Bank:</strong> {{.Business.BankName}}<br>
                     <strong>IBAN:</strong> {{.Business.IBAN}}<br>
                     <strong>BIC:</strong> {{.Business.BIC}}
+                    {{if .Business.Currency}}<br><strong>Currency:</strong> {{.Business.Currency}}{{end}}
                 </p>
+                {{end}}
+                
+                {{if .Business.SecondIBAN}}
+                <p class="mt-2">
+                    <strong>Alternative Bank:</strong> {{.Business.SecondBankName}}<br>
+                    <strong>IBAN:</strong> {{.Business.SecondIBAN}}<br>
+                    <strong>BIC:</strong> {{.Business.SecondBIC}}
+                    {{if .Business.SecondCurrency}}<br><strong>Currency:</strong> {{.Business.SecondCurrency}}{{end}}
+                </p>
+                {{end}}
+                
+                {{if .Business.ExtraBusinessDetail}}
+                <h5 class="mt-3">Additional Business Information:</h5>
+                <p>{{.Business.ExtraBusinessDetail}}</p>
+                {{end}}
             </div>
             <div class="col-md-6">
                 {{if .Invoice.Notes}}
