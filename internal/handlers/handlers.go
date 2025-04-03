@@ -194,6 +194,7 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 	mux.HandleFunc("/api/invoices", handler.InvoicesAPIHandler)
 	mux.HandleFunc("/api/invoices/", handler.InvoiceByIDHandler)
 	mux.HandleFunc("/api/invoices/generate-pdf/", handler.GeneratePDFHandler)
+	mux.HandleFunc("/api/invoices/preview-pdf", handler.PreviewPDFHandler)
 	mux.HandleFunc("/api/upload/logo", handler.UploadLogoHandler)
 	mux.HandleFunc("/api/backups", handler.BackupsAPIHandler)
 	mux.HandleFunc("/api/backups/restore", handler.RestoreBackupHandler)
@@ -960,6 +961,147 @@ func (h *AppHandler) GeneratePDFHandler(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+}
+
+// PreviewPDFHandler generates a PDF preview based on form data
+func (h *AppHandler) PreviewPDFHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.logger.Warn("Method not allowed for PDF preview: %s", r.Method)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	h.logger.Info("Generating PDF preview")
+
+	// First parse the raw JSON data to access the date fields
+	var rawData map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&rawData); err != nil {
+		h.logger.Error("Failed to decode raw preview data: %v", err)
+		http.Error(w, "Invalid request data", http.StatusBadRequest)
+		return
+	}
+
+	// Parse the invoice data to access date fields
+	var rawInvoice map[string]interface{}
+	if err := json.Unmarshal(rawData["invoice"], &rawInvoice); err != nil {
+		h.logger.Error("Failed to parse invoice data: %v", err)
+		http.Error(w, "Invalid invoice data", http.StatusBadRequest)
+		return
+	}
+
+	// Create the preview data structure
+	var previewData struct {
+		Invoice  models.Invoice       `json:"invoice"`
+		Items    []models.InvoiceItem `json:"items"`
+		Business models.Business      `json:"business"`
+		Client   models.Client        `json:"client"`
+	}
+
+	// Parse the rest of the data
+	if err := json.Unmarshal(rawData["business"], &previewData.Business); err != nil {
+		h.logger.Error("Failed to decode business data: %v", err)
+		http.Error(w, "Invalid business data", http.StatusBadRequest)
+		return
+	}
+
+	if err := json.Unmarshal(rawData["client"], &previewData.Client); err != nil {
+		h.logger.Error("Failed to decode client data: %v", err)
+		http.Error(w, "Invalid client data", http.StatusBadRequest)
+		return
+	}
+
+	if err := json.Unmarshal(rawData["items"], &previewData.Items); err != nil {
+		h.logger.Error("Failed to decode items data: %v", err)
+		http.Error(w, "Invalid items data", http.StatusBadRequest)
+		return
+	}
+
+	// Fill in the invoice fields
+	previewData.Invoice.ID = int(rawInvoice["id"].(float64))
+	previewData.Invoice.InvoiceNumber = rawInvoice["invoice_number"].(string)
+	previewData.Invoice.BusinessID = int(rawInvoice["business_id"].(float64))
+	previewData.Invoice.ClientID = int(rawInvoice["client_id"].(float64))
+	previewData.Invoice.HourlyRate = rawInvoice["hourly_rate"].(float64)
+	previewData.Invoice.HoursWorked = rawInvoice["hours_worked"].(float64)
+	previewData.Invoice.TotalAmount = rawInvoice["total_amount"].(float64)
+	previewData.Invoice.VatRate = rawInvoice["vat_rate"].(float64)
+	previewData.Invoice.VatAmount = rawInvoice["vat_amount"].(float64)
+	previewData.Invoice.ReverseChargeVat = rawInvoice["reverse_charge_vat"].(bool)
+	previewData.Invoice.Currency = rawInvoice["currency"].(string)
+	previewData.Invoice.Notes = rawInvoice["notes"].(string)
+	previewData.Invoice.Status = rawInvoice["status"].(string)
+
+	// Handle date parsing
+	issueDateStr, ok := rawInvoice["issue_date"].(string)
+	if !ok {
+		h.logger.Error("Issue date is missing or not a string")
+		http.Error(w, "Issue date is required", http.StatusBadRequest)
+		return
+	}
+
+	// Try parsing with the simple date format first
+	issueDate, err := time.Parse("2006-01-02", issueDateStr)
+	if err != nil {
+		// If that fails, try the full timestamp format
+		issueDate, err = time.Parse(time.RFC3339, issueDateStr)
+		if err != nil {
+			h.logger.Error("Failed to parse issue date: %v", err)
+			http.Error(w, "Invalid issue date format", http.StatusBadRequest)
+			return
+		}
+	}
+	previewData.Invoice.IssueDate = issueDate
+
+	dueDateStr, ok := rawInvoice["due_date"].(string)
+	if !ok {
+		h.logger.Error("Due date is missing or not a string")
+		http.Error(w, "Due date is required", http.StatusBadRequest)
+		return
+	}
+
+	// Try parsing with the simple date format first
+	dueDate, err := time.Parse("2006-01-02", dueDateStr)
+	if err != nil {
+		// If that fails, try the full timestamp format
+		dueDate, err = time.Parse(time.RFC3339, dueDateStr)
+		if err != nil {
+			h.logger.Error("Failed to parse due date: %v", err)
+			http.Error(w, "Invalid due date format", http.StatusBadRequest)
+			return
+		}
+	}
+	previewData.Invoice.DueDate = dueDate
+
+	// Ensure the pdfs directory exists
+	pdfsDir := filepath.Join(h.dataDir, "pdfs", "previews")
+	if err := os.MkdirAll(pdfsDir, 0755); err != nil {
+		h.logger.Error("Failed to create pdfs preview directory: %v", err)
+		http.Error(w, "Failed to create preview directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Create a unique preview filename using a timestamp
+	previewID := fmt.Sprintf("preview-%d", time.Now().UnixNano())
+	previewData.Invoice.InvoiceNumber = previewID
+
+	// Generate the PDF
+	pdfPath, err := h.pdfService.GenerateInvoice(&previewData.Invoice, &previewData.Business, &previewData.Client, previewData.Items)
+	if err != nil {
+		h.logger.Error("Failed to generate preview PDF: %v", err)
+		http.Error(w, "Failed to generate preview", http.StatusInternalServerError)
+		return
+	}
+
+	// Extract just the filename from the full path
+	pdfFilename := filepath.Base(pdfPath)
+	pdfURL := fmt.Sprintf("/data/pdfs/%s", pdfFilename)
+	h.logger.Info("Generated preview PDF: %s", pdfURL)
+
+	// Return the PDF URL
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"url": pdfURL,
+	})
 }
 
 // UploadLogoHandler handles logo uploads

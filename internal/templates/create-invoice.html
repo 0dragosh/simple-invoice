@@ -2,145 +2,165 @@
 <div class="card">
     <div class="card-body">
         <h2 class="card-title">Create Invoice</h2>
-        <form id="invoiceForm" class="mt-4">
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <label for="invoiceNumber" class="form-label">Invoice Number</label>
-                    <input type="text" class="form-control" id="invoiceNumber" name="invoiceNumber" required>
-                </div>
-                <div class="col-md-4">
-                    <label for="issueDate" class="form-label">Issue Date</label>
-                    <input type="date" class="form-control" id="issueDate" name="issueDate" value="{{.IssueDate}}" required>
-                </div>
-                <div class="col-md-4">
-                    <label for="dueDate" class="form-label">Due Date</label>
-                    <input type="date" class="form-control" id="dueDate" name="dueDate" value="{{.DueDate}}" required>
-                </div>
-            </div>
-            
-            <div class="row mb-3">
-                <div class="col-md-6">
-                    <label for="clientId" class="form-label">Client</label>
-                    <select class="form-select" id="clientId" name="clientId" required>
-                        <option value="">Select Client</option>
-                        {{range .Clients}}
-                        <option value="{{.ID}}" data-country="{{.Country}}">{{.Name}} ({{.VatID}})</option>
-                        {{end}}
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label for="businessId" class="form-label">Business</label>
-                    <select class="form-select" id="businessId" name="businessId" data-country="{{.Business.Country}}" required>
-                        <option value="{{.Business.ID}}" selected>{{.Business.Name}} ({{.Business.VatID}})</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <label for="hourlyRate" class="form-label">Hourly Rate</label>
-                    <input type="number" class="form-control" id="hourlyRate" name="hourlyRate" step="0.01" min="0" required>
-                </div>
-                <div class="col-md-4">
-                    <label for="hoursWorked" class="form-label">Hours Worked</label>
-                    <input type="number" class="form-control" id="hoursWorked" name="hoursWorked" step="0.01" min="0" value="{{.WorkHours}}" required>
-                </div>
-                <div class="col-md-2">
-                    <label for="vatRate" class="form-label">VAT Rate (%)</label>
-                    <input type="number" class="form-control" id="vatRate" name="vatRate" step="0.1" min="0" value="19" required>
-                </div>
-                <div class="col-md-2">
-                    <label for="currency" class="form-label">Currency</label>
-                    <select class="form-select" id="currency" name="currency">
-                        <option value="EUR" selected>EUR (€)</option>
-                        <option value="GBP">GBP (£)</option>
-                        <option value="BGN">BGN (лв)</option>
-                        <option value="HRK">HRK (kn)</option>
-                        <option value="CZK">CZK (Kč)</option>
-                        <option value="DKK">DKK (kr)</option>
-                        <option value="HUF">HUF (Ft)</option>
-                        <option value="PLN">PLN (zł)</option>
-                        <option value="RON">RON (lei)</option>
-                        <option value="SEK">SEK (kr)</option>
-                        <option value="USD">USD ($)</option>
-                        <option value="CHF">CHF (Fr)</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="row mb-3">
-                <div class="col-md-12">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="reverseChargeVat" name="reverseChargeVat">
-                        <label class="form-check-label" for="reverseChargeVat">
-                            Reverse Charge VAT
-                        </label>
+        <div class="row">
+            <div class="col-md-6">
+                <form id="invoiceForm" class="mt-4">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="invoiceNumber" class="form-label">Invoice Number</label>
+                            <input type="text" class="form-control" id="invoiceNumber" name="invoiceNumber" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="issueDate" class="form-label">Issue Date</label>
+                            <input type="date" class="form-control" id="issueDate" name="issueDate" value="{{.IssueDate}}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="dueDate" class="form-label">Due Date</label>
+                            <input type="date" class="form-control" id="dueDate" name="dueDate" value="{{.DueDate}}" required>
+                        </div>
                     </div>
-                </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="clientId" class="form-label">Client</label>
+                            <select class="form-select" id="clientId" name="clientId" required>
+                                <option value="">Select Client</option>
+                                {{range .Clients}}
+                                <option value="{{.ID}}" data-country="{{.Country}}">{{.Name}} ({{.VatID}})</option>
+                                {{end}}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="businessId" class="form-label">Business</label>
+                            <select class="form-select" id="businessId" name="businessId" data-country="{{.Business.Country}}" required>
+                                <option value="{{.Business.ID}}" selected>{{.Business.Name}} ({{.Business.VatID}})</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="hourlyRate" class="form-label">Hourly Rate</label>
+                            <input type="number" class="form-control" id="hourlyRate" name="hourlyRate" step="0.01" min="0" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="hoursWorked" class="form-label">Hours Worked</label>
+                            <input type="number" class="form-control" id="hoursWorked" name="hoursWorked" step="0.01" min="0" value="{{.WorkHours}}" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="vatRate" class="form-label">VAT Rate (%)</label>
+                            <input type="number" class="form-control" id="vatRate" name="vatRate" step="0.1" min="0" value="19" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="currency" class="form-label">Currency</label>
+                            <select class="form-select" id="currency" name="currency">
+                                <option value="EUR" selected>EUR (€)</option>
+                                <option value="GBP">GBP (£)</option>
+                                <option value="BGN">BGN (лв)</option>
+                                <option value="HRK">HRK (kn)</option>
+                                <option value="CZK">CZK (Kč)</option>
+                                <option value="DKK">DKK (kr)</option>
+                                <option value="HUF">HUF (Ft)</option>
+                                <option value="PLN">PLN (zł)</option>
+                                <option value="RON">RON (lei)</option>
+                                <option value="SEK">SEK (kr)</option>
+                                <option value="USD">USD ($)</option>
+                                <option value="CHF">CHF (Fr)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="reverseChargeVat" name="reverseChargeVat">
+                                <label class="form-check-label" for="reverseChargeVat">
+                                    Reverse Charge VAT
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <h3 class="mt-4">Invoice Items</h3>
+                    <div id="invoiceItems">
+                        <div class="invoice-item card mb-3">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Description</label>
+                                        <input type="text" class="form-control item-description" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Quantity</label>
+                                        <input type="number" class="form-control item-quantity" step="0.01" min="0" value="1" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Unit Price</label>
+                                        <input type="number" class="form-control item-price" step="0.01" min="0" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Amount</label>
+                                        <input type="number" class="form-control item-amount" step="0.01" min="0" readonly>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <button type="button" class="btn btn-secondary" id="addItemBtn">Add Item</button>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label for="notes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6 offset-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="row mb-2">
+                                        <div class="col-6">Subtotal:</div>
+                                        <div class="col-6 text-end" id="subtotal">0.00</div>
+                                    </div>
+                                    <div class="row mb-2">
+                                        <div class="col-6">VAT:</div>
+                                        <div class="col-6 text-end" id="vat">0.00</div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-6"><strong>Total:</strong></div>
+                                        <div class="col-6 text-end"><strong id="total">0.00</strong></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Create Invoice</button>
+                </form>
             </div>
-            
-            <h3 class="mt-4">Invoice Items</h3>
-            <div id="invoiceItems">
-                <div class="invoice-item card mb-3">
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <label class="form-label">Description</label>
-                                <input type="text" class="form-control item-description" required>
+            <div class="col-md-6">
+                <div class="card sticky-top" style="top: 20px;">
+                    <div class="card-header">
+                        <h3 class="card-title h5 mb-0">Live PDF Preview</h3>
+                    </div>
+                    <div class="card-body p-0" id="pdfPreviewContainer">
+                        <div class="d-flex justify-content-center align-items-center" style="height: 800px;">
+                            <div class="text-center text-muted" id="previewPlaceholder">
+                                <i class="fas fa-file-pdf fa-3x mb-3"></i>
+                                <p>Complete the form to see a live preview</p>
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Quantity</label>
-                                <input type="number" class="form-control item-quantity" step="0.01" min="0" value="1" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Unit Price</label>
-                                <input type="number" class="form-control item-price" step="0.01" min="0" required>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Amount</label>
-                                <input type="number" class="form-control item-amount" step="0.01" min="0" readonly>
-                            </div>
+                            <iframe id="pdfPreview" style="width: 100%; height: 800px; display: none; border: none;"></iframe>
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <div class="row mb-3">
-                <div class="col-md-12">
-                    <button type="button" class="btn btn-secondary" id="addItemBtn">Add Item</button>
-                </div>
-            </div>
-            
-            <div class="row mb-3">
-                <div class="col-md-12">
-                    <label for="notes" class="form-label">Notes</label>
-                    <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
-                </div>
-            </div>
-            
-            <div class="row mb-3">
-                <div class="col-md-6 offset-md-6">
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="row mb-2">
-                                <div class="col-6">Subtotal:</div>
-                                <div class="col-6 text-end" id="subtotal">0.00</div>
-                            </div>
-                            <div class="row mb-2">
-                                <div class="col-6">VAT:</div>
-                                <div class="col-6 text-end" id="vat">0.00</div>
-                            </div>
-                            <div class="row">
-                                <div class="col-6"><strong>Total:</strong></div>
-                                <div class="col-6 text-end"><strong id="total">0.00</strong></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <button type="submit" class="btn btn-primary">Create Invoice</button>
-        </form>
+        </div>
     </div>
 </div>
 
@@ -677,6 +697,186 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.textContent = 'Create Invoice';
         }
     }
+
+    // Live PDF preview functionality
+    let previewDebounceTimer;
+    const pdfPreview = document.getElementById('pdfPreview');
+    const previewPlaceholder = document.getElementById('previewPlaceholder');
+    const previewDelay = 1000; // 1 second delay before refreshing preview
+    
+    // Function to update the PDF preview
+    function updatePDFPreview() {
+        // Clear any pending preview updates
+        if (previewDebounceTimer) {
+            clearTimeout(previewDebounceTimer);
+        }
+        
+        // Set a timer to update the preview after a short delay
+        previewDebounceTimer = setTimeout(() => {
+            // Get business ID (required)
+            const businessId = document.getElementById('businessId').value;
+            
+            try {
+                // Get business details
+                const business = {
+                    id: parseInt(businessId),
+                    name: "{{.Business.Name}}",
+                    address: "{{.Business.Address}}",
+                    city: "{{.Business.City}}",
+                    postal_code: "{{.Business.PostalCode}}",
+                    country: "{{.Business.Country}}",
+                    vat_id: "{{.Business.VatID}}",
+                    email: "{{.Business.Email}}",
+                    logo_path: "{{.Business.LogoPath}}",
+                    bank_name: "{{.Business.BankName}}",
+                    iban: "{{.Business.IBAN}}",
+                    bic: "{{.Business.BIC}}",
+                    currency: "{{.Business.Currency}}",
+                    second_bank_name: "{{.Business.SecondBankName}}",
+                    second_iban: "{{.Business.SecondIBAN}}",
+                    second_bic: "{{.Business.SecondBIC}}",
+                    second_currency: "{{.Business.SecondCurrency}}",
+                    extra_business_detail: "{{.Business.ExtraBusinessDetail}}"
+                };
+                
+                // Get client details - now handle even if client is not yet selected
+                const clientId = document.getElementById('clientId').value || "0";
+                let clientOption = null;
+                let clientName = "Client Name";
+                let clientVatId = "";
+                let clientCountry = "";
+                
+                if (clientId && clientId !== "0") {
+                    clientOption = document.getElementById('clientId').options[document.getElementById('clientId').selectedIndex];
+                    if (clientOption) {
+                        clientName = clientOption.text.split(' (')[0];
+                        clientVatId = clientOption.text.match(/\((.*?)\)/) ? clientOption.text.match(/\((.*?)\)/)[1] : "";
+                        clientCountry = clientOption.getAttribute('data-country') || "";
+                    }
+                }
+                
+                const client = {
+                    id: parseInt(clientId) || 0,
+                    name: clientName,
+                    address: "Enter client address",
+                    city: "City",
+                    postal_code: "Postal Code",
+                    country: clientCountry,
+                    vat_id: clientVatId
+                };
+                
+                // Get invoice details
+                const invoiceNumber = document.getElementById('invoiceNumber').value || `${year}-${month}-${random}`;
+                const issueDate = document.getElementById('issueDate').value || new Date().toISOString().split('T')[0];
+                const dueDate = document.getElementById('dueDate').value || new Date().toISOString().split('T')[0];
+                const hourlyRate = parseFloat(document.getElementById('hourlyRate').value) || 0;
+                const hoursWorked = parseFloat(document.getElementById('hoursWorked').value) || 0;
+                const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+                const currency = document.getElementById('currency').value || 'EUR';
+                const reverseChargeVat = document.getElementById('reverseChargeVat').checked;
+                const notes = document.getElementById('notes').value || '';
+                
+                // Collect invoice items
+                const items = [];
+                document.querySelectorAll('.invoice-item').forEach(item => {
+                    const description = item.querySelector('.item-description').value;
+                    const quantity = parseFloat(item.querySelector('.item-quantity').value) || 0;
+                    const unitPrice = parseFloat(item.querySelector('.item-price').value) || 0;
+                    const amount = parseFloat(item.querySelector('.item-amount').value) || 0;
+                    
+                    if (description) {
+                        items.push({
+                            description: description,
+                            quantity: quantity,
+                            unit_price: unitPrice,
+                            amount: amount
+                        });
+                    }
+                });
+                
+                // Calculate totals
+                const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
+                const vatAmount = reverseChargeVat ? 0 : subtotal * (vatRate / 100);
+                const totalAmount = subtotal + vatAmount;
+                
+                // Create the preview request data
+                const previewData = {
+                    invoice: {
+                        id: 0,
+                        invoice_number: invoiceNumber,
+                        business_id: business.id,
+                        client_id: client.id,
+                        issue_date: issueDate,
+                        due_date: dueDate,
+                        hourly_rate: hourlyRate,
+                        hours_worked: hoursWorked,
+                        total_amount: totalAmount,
+                        vat_rate: vatRate,
+                        vat_amount: vatAmount,
+                        reverse_charge_vat: reverseChargeVat,
+                        currency: currency,
+                        notes: notes,
+                        status: "Draft"
+                    },
+                    items: items,
+                    business: business,
+                    client: client
+                };
+                
+                // Show loading state
+                previewPlaceholder.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Generating preview...</p>';
+                previewPlaceholder.style.display = 'block';
+                pdfPreview.style.display = 'none';
+                
+                // Send request to generate preview
+                fetch('/api/invoices/preview-pdf', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(previewData),
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Preview generation failed');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Show the preview
+                    pdfPreview.src = window.location.origin + data.url;
+                    pdfPreview.onload = function() {
+                        previewPlaceholder.style.display = 'none';
+                        pdfPreview.style.display = 'block';
+                    };
+                })
+                .catch(error => {
+                    console.error('Error generating preview:', error);
+                    previewPlaceholder.innerHTML = '<i class="fas fa-exclamation-triangle fa-2x text-warning mb-3"></i><p>Failed to generate preview</p>';
+                });
+                
+            } catch (error) {
+                console.error('Error preparing preview data:', error);
+                previewPlaceholder.innerHTML = '<i class="fas fa-exclamation-triangle fa-2x text-warning mb-3"></i><p>Failed to prepare preview data</p>';
+            }
+        }, previewDelay);
+    }
+    
+    // Update preview when form changes
+    invoiceForm.addEventListener('input', updatePDFPreview);
+    invoiceForm.addEventListener('change', updatePDFPreview);
+    
+    // Initial preview update once the client is selected
+    document.getElementById('clientId').addEventListener('change', function() {
+        // First run the existing client selection logic
+        checkReverseChargeVat();
+        // Then update the preview
+        updatePDFPreview();
+    });
+
+    // Generate the preview immediately when the page loads
+    // Use a small timeout to ensure everything is initialized
+    setTimeout(updatePDFPreview, 100);
 });
 </script>
 {{end}} 
