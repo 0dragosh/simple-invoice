@@ -28,10 +28,11 @@ type AppHandler struct {
 	templates     map[string]*template.Template
 	dataDir       string
 	logger        *services.Logger
+	version       string
 }
 
 // NewAppHandler creates a new AppHandler
-func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error) {
+func NewAppHandler(dataDir string, logger *services.Logger, version string) (*AppHandler, error) {
 	// Create DB service
 	dbService, err := services.NewDBService(dataDir, logger)
 	if err != nil {
@@ -72,6 +73,7 @@ func NewAppHandler(dataDir string, logger *services.Logger) (*AppHandler, error)
 		templates:     templates,
 		dataDir:       dataDir,
 		logger:        logger,
+		version:       version,
 	}, nil
 }
 
@@ -170,13 +172,21 @@ func parseTemplates(logger *services.Logger) (map[string]*template.Template, err
 }
 
 // RegisterHandlers registers all HTTP handlers
-func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logger) (*AppHandler, error) {
-	handler, err := NewAppHandler(dataDir, logger)
+func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logger, version string) (*AppHandler, error) {
+	handler, err := NewAppHandler(dataDir, logger, version)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register page handlers
+	// Register static file handler
+	staticDir := filepath.Join(dataDir, "static")
+	if err := os.MkdirAll(staticDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create static directory: %w", err)
+	}
+	fileServer := http.FileServer(http.Dir(staticDir))
+	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+
+	// Register handlers
 	mux.HandleFunc("/", handler.IndexHandler)
 	mux.HandleFunc("/business", handler.BusinessHandler)
 	mux.HandleFunc("/clients", handler.ClientsHandler)
@@ -185,7 +195,7 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 	mux.HandleFunc("/invoices/view/", handler.ViewInvoiceHandler)
 	mux.HandleFunc("/backups", handler.BackupsHandler)
 
-	// Register API handlers
+	// API endpoints
 	mux.HandleFunc("/api/business", handler.BusinessAPIHandler)
 	mux.HandleFunc("/api/clients", handler.ClientsAPIHandler)
 	mux.HandleFunc("/api/clients/", handler.ClientsAPIHandler)
@@ -193,14 +203,14 @@ func RegisterHandlers(mux *http.ServeMux, dataDir string, logger *services.Logge
 	mux.HandleFunc("/api/clients/uk-company-lookup", handler.UKCompanyLookupHandler)
 	mux.HandleFunc("/api/invoices", handler.InvoicesAPIHandler)
 	mux.HandleFunc("/api/invoices/", handler.InvoiceByIDHandler)
-	mux.HandleFunc("/api/invoices/generate-pdf/", handler.GeneratePDFHandler)
+	mux.HandleFunc("/api/invoices/generate-pdf", handler.GeneratePDFHandler)
 	mux.HandleFunc("/api/invoices/preview-pdf", handler.PreviewPDFHandler)
 	mux.HandleFunc("/api/upload/logo", handler.UploadLogoHandler)
 	mux.HandleFunc("/api/backups", handler.BackupsAPIHandler)
 	mux.HandleFunc("/api/backups/restore", handler.RestoreBackupHandler)
 
 	// Register static file handler
-	fileServer := http.FileServer(http.Dir(dataDir))
+	fileServer = http.FileServer(http.Dir(dataDir))
 	mux.Handle("/data/", http.StripPrefix("/data/", fileServer))
 
 	// Log the data directory and static file paths
@@ -1299,6 +1309,16 @@ func (h *AppHandler) renderTemplate(w http.ResponseWriter, tmpl string, data map
 		h.logger.Error("Template not found: %s", tmpl)
 		http.Error(w, fmt.Sprintf("Template not found: %s", tmpl), http.StatusInternalServerError)
 		return
+	}
+
+	// Include Version in the data
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+
+	// Add the version if not already set
+	if _, exists := data["Version"]; !exists {
+		data["Version"] = h.version
 	}
 
 	// Render the template

@@ -15,6 +15,8 @@ import (
 	"github.com/0dragosh/simple-invoice/internal/services"
 )
 
+var Version string
+
 func main() {
 	// Parse command-line flags
 	resetDB := flag.Bool("reset-db", false, "Reset the database before starting")
@@ -53,6 +55,12 @@ func main() {
 	logger := services.NewLogger(logLevel)
 	logger.Info("Starting application with log level: %s", logLevelStr)
 
+	// Set default version if not set during build
+	if Version == "" {
+		Version = "dev"
+	}
+	logger.Info("Application version: %s", Version)
+
 	// Ensure data directories exist
 	if err := ensureDir(dataDir, logger); err != nil {
 		logger.Fatal("Failed to create data directory: %v", err)
@@ -70,7 +78,7 @@ func main() {
 
 	// Create and configure the HTTP server
 	mux := http.NewServeMux()
-	appHandler, err := handlers.RegisterHandlers(mux, dataDir, logger)
+	appHandler, err := handlers.RegisterHandlers(mux, dataDir, logger, Version)
 	if err != nil {
 		logger.Fatal("Failed to register handlers: %v", err)
 	}

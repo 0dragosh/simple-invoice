@@ -157,6 +157,30 @@ function generate_release_notes {
     git log --pretty=format:"- %s (%h)" $latest_tag..HEAD | grep -i -v -E "^- (feat|fix|perf|refactor|docs|test|chore|style|ci|build)" || echo "- No other changes"
 }
 
+# Function to save the current version to a VERSION file
+function save_version_file {
+    local version=$1
+    echo "$version" > VERSION
+    echo -e "${BLUE}Version saved to VERSION file: $version${NC}"
+}
+
+# Function to get current git commit short SHA
+function get_git_short_sha {
+    git rev-parse --short HEAD
+}
+
+# Function to build Docker image with version
+function build_docker_image {
+    local version=$1
+    echo -e "${BLUE}Building Docker image with version: $version${NC}"
+    if docker build --build-arg APP_VERSION="$version" -t "simple-invoice:$version" .; then
+        echo -e "${GREEN}Docker image built successfully: simple-invoice:$version${NC}"
+    else
+        echo -e "${RED}Docker build failed${NC}"
+        return 1
+    fi
+}
+
 # Main script execution starts here
 
 # Check if we have at least one argument
@@ -223,6 +247,15 @@ git tag -a "$new_version" -m "Release $new_version"
 # Push the tag
 echo -e "${BLUE}Pushing tag to remote...${NC}"
 git push origin "$new_version"
+
+# Save version to VERSION file
+save_version_file "$new_version"
+
+# Ask to build Docker image
+read -p "Do you want to build a Docker image with this version? (y/n): " build_docker
+if [[ "$build_docker" == "y" || "$build_docker" == "Y" ]]; then
+    build_docker_image "$new_version"
+fi
 
 echo -e "${GREEN}Release $new_version created successfully!${NC}"
 echo "Don't forget to update your changelog and documentation."

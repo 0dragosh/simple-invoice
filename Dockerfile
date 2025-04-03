@@ -1,5 +1,6 @@
 # Build stage
 FROM --platform=linux/amd64 golang:1.24-alpine AS builder
+ARG APP_VERSION
 
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev
@@ -16,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Build the application specifically for AMD64
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o server ./cmd/server
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -ldflags "-X main.Version=${APP_VERSION}" -o server ./cmd/server
 
 # Final stage
 FROM --platform=linux/amd64 alpine:3.21.3
