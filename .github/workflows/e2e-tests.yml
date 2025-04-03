@@ -25,6 +25,17 @@ jobs:
         with:
           go-version: '1.24'
           cache: true
+          cache-dependency-path: "**/go.sum"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       - name: Install Go dependencies
         run: |
@@ -67,6 +78,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'e2e/package-lock.json'
       
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('e2e/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+      
       - name: Install Playwright and dependencies
         working-directory: e2e
         run: |
@@ -79,8 +98,8 @@ jobs:
       - name: Run Playwright tests
         working-directory: e2e
         run: |
-          # Run simplified tests (they're more robust)
-          npx playwright test tests/pages.spec.js
+          # Run all tests instead of just the simplified tests
+          npx playwright test
         env:
           CI: true
           BASE_URL: http://localhost:8080
