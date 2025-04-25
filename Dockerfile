@@ -65,3 +65,4 @@ USER 2000
 CMD ["/app/server"]
 
 LABEL org.opencontainers.image.source=https://github.com/0dragosh/simple-invoice
+LABEL org.opencontainers.image.version=${APP_VERSION}
