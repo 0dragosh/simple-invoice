@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.42.1",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^2.0.0",
     "@faker-js/faker": "^10.0.0"
   }
 } 
