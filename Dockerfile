@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -ldflags "-X main.Version=${APP_VERSION}" -o server ./cmd/server
 
 # Final stage
-FROM --platform=linux/amd64 alpine:3.23.0
+FROM --platform=linux/amd64 alpine:3.23.2
 
 # Install required dependencies for SQLite
 RUN apk --no-cache add ca-certificates tzdata sqlite
